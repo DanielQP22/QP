@@ -218,6 +218,7 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
             <label class="field"><span class="l">IDIOMA DO FICHEIRO</span>
               <select id="f-lang"><option value="pt">Português</option><option value="en">English</option></select></label>
           </div>
+          <label class="field"><span class="l">DURAÇÃO DO TEAM BUILDING</span><select id="f-dur"><option value="0">Automática (soma das dinâmicas)</option><option value="60">1 h</option><option value="90">1 h 30</option><option value="120">2 h</option><option value="150">2 h 30</option><option value="180">3 h</option><option value="210">3 h 30</option><option value="240">4 h</option><option value="270">4 h 30</option><option value="300">5 h</option><option value="330">5 h 30</option><option value="360">6 h</option></select></label>
           <label class="field"><span class="l">BRIEFING POR DINÂMICA (MIN)</span><input id="f-brief" type="number" min="0" max="30" inputmode="numeric"></label>
           <label class="field"><span class="l">NOTAS DA SESSÃO (FICHA DO MONITOR)</span><textarea id="f-notas" rows="3" placeholder="Restrições do grupo, pedidos do cliente, alterações de última hora"></textarea></label>
         </div>
@@ -36964,6 +36965,8 @@ var TB = (function () {
       pickEmpty: 'Escolha dinâmicas no catálogo para gerar a proposta.',
       kv: ['Cliente', 'Data', 'Parque', 'Participantes', 'Duração estimada'], dash: '—',
       durTxt: function (g, b) { return g + ' de jogo + ' + b + ' de briefing e transições'; },
+      durLbl: 'Duração', kvSet: 'Duração do Team Building',
+      durSetTxt: function (set, est, diff) { return set + ' (programa estimado: ' + est + (diff > 0 ? ' · margem de ' + dur(diff) : diff < 0 ? ' · excede em ' + dur(-diff) : ' · sem margem') + ')'; },
       progH: 'Programa da sessão', progHead: ['#', 'Dinâmica', 'Zona', 'Tipo', 'Tempo'],
       matH: 'Material a preparar', matHead: ['', 'Material', 'Usado em'],
       area: 'Área', time: 'Tempo', type: 'Tipo', minutes: 'minutos',
@@ -37002,6 +37005,8 @@ var TB = (function () {
       pickEmpty: 'Choose activities from the catalogue to generate the proposal.',
       kv: ['Client', 'Date', 'Park', 'Participants', 'Estimated duration'], dash: '—',
       durTxt: function (g, b) { return g + ' of play + ' + b + ' for briefings and transitions'; },
+      durLbl: 'Duration', kvSet: 'Team Building duration',
+      durSetTxt: function (set, est, diff) { return set + ' (estimated programme: ' + est + (diff > 0 ? ' · ' + dur(diff) + ' spare' : diff < 0 ? ' · over by ' + dur(-diff) : ' · no spare time') + ')'; },
       progH: 'Session programme', progHead: ['#', 'Activity', 'Area', 'Type', 'Time'],
       matH: 'Equipment to prepare', matHead: ['', 'Equipment', 'Used in'],
       area: 'Area', time: 'Time', type: 'Type', minutes: 'minutes',
@@ -37040,7 +37045,8 @@ var TB = (function () {
     var d = selected(state), s = 0, n = 0;
     d.forEach(function (x) { s += x.min; if (!x.torneio) n++; });
     var b = (state.briefing || 0) * n;
-    return { dyn: s, brief: b, total: s + b };
+    var set = parseInt(state.durTotal, 10) || 0;
+    return { dyn: s, brief: b, total: s + b, set: set, diff: set ? set - (s + b) : 0 };
   }
   function tipoLbl(d, s) { return L[lg(s)][d.tipo]; }
 
@@ -37048,7 +37054,7 @@ var TB = (function () {
     var l = L[lg(state)];
     return { header: l.brand(park(state)) + ' · Team Building', footer: l.brand(park(state)), lang: lg(state) };
   }
-  function subLine(state) { return [L[lg(state)].brand(park(state)), state.cliente, fmtDate(state.data, state)].filter(Boolean).join(' · '); }
+  function subLine(state, withDur) { var set = parseInt(state.durTotal, 10) || 0; return [L[lg(state)].brand(park(state)), state.cliente, fmtDate(state.data, state), withDur && set ? L[lg(state)].durLbl + ': ' + dur(set) : ''].filter(Boolean).join(' · '); }
 
   function groups(list) {
     var out = [];
@@ -37067,7 +37073,7 @@ var TB = (function () {
   // ---------- Proposta para o cliente ----------
   function buildClient(state) {
     var l = L[lg(state)], all = selected(state), B = [];
-    B.push({ t: 'title', eyebrow: l.eyeProg, text: l.title, sub: subLine(state) });
+    B.push({ t: 'title', eyebrow: l.eyeProg, text: l.title, sub: subLine(state, true) });
     if (!all.length) { B.push({ t: 'p', text: l.pickEmpty }); return B; }
     var gs = groups(all);
     B.push({ t: 'p', text: l.intro });
@@ -37150,7 +37156,7 @@ var TB = (function () {
       B.push({ t: 'title', eyebrow: l.eyeMon, text: 'Team Building' + (state.cliente ? ' · ' + state.cliente : ''), sub: fmtDate(state.data, state) });
       B.push({ t: 'kv', rows: [
         [l.kv[0], state.cliente || l.dash], [l.kv[1], fmtDate(state.data, state) || l.dash], [l.kv[2], l.brand(park(state))],
-        [l.kv[3], state.pax ? String(state.pax) : l.dash], [l.kv[4], dur(tm.total) + ' (' + l.durTxt(dur(tm.dyn), dur(tm.brief)) + ')']] });
+        [l.kv[3], state.pax ? String(state.pax) : l.dash], tm.set ? [l.kvSet, l.durSetTxt(dur(tm.set), dur(tm.total), tm.diff)] : [l.kv[4], dur(tm.total) + ' (' + l.durTxt(dur(tm.dyn), dur(tm.brief)) + ')']] });
       B.push({ t: 'h2', text: l.progH, color: 'orange' });
       B.push({ t: 'table', head: l.progHead, widths: [600, 3400, 2300, 1900, 1438], color: 'orange', plain: true,
         rows: all.map(function (d, i) { return [String(i + 1), d.id + ' · ' + tx(d, state).nome, gname(d.grp, state), tipoLbl(d, state), d.min ? d.min + ' ' + l.min : l.dash]; }) });
@@ -37635,7 +37641,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   var KEY = 'tb-planeador-v2';
   var GRPS = ['DT', 'DE', 'DL'];
   var defaults = function () {
-    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17, labDir: 'up' };
+    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17, labDir: 'up', durTotal: 0 };
   };
   var state = defaults();
   try { var raw = localStorage.getItem(KEY); if (raw) { var s = JSON.parse(raw); if (s && Array.isArray(s.sel)) { state = Object.assign(defaults(), s); state.docs = Object.assign(defaults().docs, s.docs || {}); } } } catch (e) {}
@@ -37732,13 +37738,13 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
         '<button type="button" data-rm="' + x.id + '" aria-label="Retirar ' + esc(t.nome) + '">✕</button></div></li>';
     }).join('') : '<li class="empty" style="display:block;background:none;border:0">Ainda não há dinâmicas. Escolhe-as no separador 1.</li>';
     var t = TB.totalMin(state);
-    $('totals').innerHTML = d.length ? 'Jogo <b>' + TB.dur(t.dyn) + '</b> + briefing e transições <b>' + TB.dur(t.brief) + '</b> = <b>' + TB.dur(t.total) + '</b>' : '';
+    $('totals').innerHTML = d.length ? 'Jogo <b>' + TB.dur(t.dyn) + '</b> + briefing e transições <b>' + TB.dur(t.brief) + '</b> = <b>' + TB.dur(t.total) + '</b>' + (t.set ? '<br>Duração definida: <b>' + TB.dur(t.set) + '</b> · ' + (t.diff > 0 ? 'margem de <b>' + TB.dur(t.diff) + '</b>' : t.diff < 0 ? '<b style="color:var(--c)">excede em ' + TB.dur(-t.diff) + '</b>' : 'sem margem') : '') : '';
   }
   function renderSummary() {
     var k = state.sel.length, t = TB.totalMin(state);
-    $('summary').innerHTML = '<b>' + k + '</b> ' + (k === 1 ? 'dinâmica' : 'dinâmicas') + (k ? ' · <b>' + TB.dur(t.total) + '</b>' : '');
+    $('summary').innerHTML = '<b>' + k + '</b> ' + (k === 1 ? 'dinâmica' : 'dinâmicas') + (k ? ' · <b>' + TB.dur(t.set || t.total) + '</b>' : '');
     $('exemplo').hidden = !state.exemplo;
-    $('dock-txt').textContent = k + (k === 1 ? ' dinâmica' : ' dinâmicas') + (k ? ' · ' + TB.dur(t.total) : '');
+    $('dock-txt').textContent = k + (k === 1 ? ' dinâmica' : ' dinâmicas') + (k ? ' · ' + TB.dur(t.set || t.total) : '');
     $('b-clear').disabled = !k;
   }
   function monitorOpt() { return { resumo: !!state.docs.resumo, fichas: !!state.docs.fichas, aval: !!state.docs.aval }; }
@@ -37924,12 +37930,13 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     el.addEventListener(ev, function () { var v = el.value; state[key] = conv ? conv(v) : v; state.exemplo = false; save(); renderSummary(); renderSel(); renderPreview(); });
   };
   bind('f-cliente', 'cliente'); bind('f-data', 'data'); bind('f-pax', 'pax'); bind('f-park', 'park'); bind('f-lang', 'lang'); bind('f-notas', 'notas');
+  bind('f-dur', 'durTotal', function (v) { return parseInt(v, 10) || 0; });
   bind('f-brief', 'briefing', function (v) { var k = parseInt(v, 10); return isNaN(k) || k < 0 ? 0 : Math.min(k, 30); });
 
   /* ---------- Arranque ---------- */
   drawChips();
   $('f-cliente').value = state.cliente; $('f-data').value = state.data; $('f-pax').value = state.pax; $('f-park').value = state.park; $('f-lang').value = state.lang;
-  $('f-brief').value = state.briefing; $('f-notas').value = state.notas;
+  $('f-dur').value = String(state.durTotal || 0); $('f-brief').value = state.briefing; $('f-notas').value = state.notas;
   renderGrid(); refresh();
   try { if (/iP(hone|ad|od)|Android/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform))) $('ios-note').hidden = false; } catch (e) {}
   (async function () {
