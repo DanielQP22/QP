@@ -144,7 +144,13 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
   .dock span { font-family: var(--font-display); font-weight: 600; font-size: 14px; }
   .count { margin-left: 0; }
 }
-@media print { @page { size: A4; margin: 14mm; } html, body { background: #fff !important; } body * { visibility: hidden !important; } #sheet, #sheet * { visibility: visible !important; } #sheet { position: absolute !important; left: 0; top: 0; width: 100% !important; max-height: none !important; overflow: visible !important; border: 0 !important; padding: 0 !important; } }
+.lab-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 8px 0 12px; } .lab-n { margin: 0; width: 150px; }
+.lab-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 360px; margin: 0 auto 8px; user-select: none; }
+.lab-end, .lab-in { grid-column: 1 / -1; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .08em; padding: 10px 6px; border: 2px solid var(--line); border-radius: 8px; color: var(--muted, inherit); }
+.lab-end { background: rgba(120,120,120,.18); } .lab-in { border-style: dashed; }
+.lab-c { height: 46px; font-size: 20px; font-weight: 800; border: 2px solid var(--line); border-radius: 8px; background: rgba(120,120,120,.16); color: inherit; cursor: pointer; font-family: inherit; }
+.lab-c.on { background: var(--o); color: #fff; border-color: var(--o); } .lab-c.next { border-color: var(--b); box-shadow: 0 0 0 2px var(--b) inset; } .lab-c.off { color: #FF3B30; }
+.lab-c:disabled { cursor: default; opacity: .55; }
 @media (max-width: 520px) { .row2 { grid-template-columns: minmax(0, 1fr); } .sheet { padding: 18px 14px 22px; } .actions .btn { flex: 1 1 140px; } }
 .d-break { border: 0; border-top: 2px dashed var(--paper-line); margin: 22px 0 6px; }
 .d-evf { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 0 10px; font-size: 13px; }
@@ -211,6 +217,18 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
           <h2>Programa</h2>
           <ol class="sel" id="sel"></ol>
           <div class="totals" id="totals"></div>
+        </div>
+        <div class="panel" id="lab-panel" hidden>
+          <h2>Mapa do Labirinto (DT2)</h2>
+          <p class="note" id="lab-note">Define a ordem do percurso. Toca nos trampolins por ordem, a partir da entrada, ou gera um percurso aleatório. O mapa é impresso na ficha do monitor.</p>
+          <div class="lab-bar">
+            <label class="field lab-n"><span class="l">TRAMPOLINS NO PERCURSO</span><input id="lab-n" type="number" min="7" max="21" value="17" inputmode="numeric"></label>
+            <button class="btn" id="lab-rand" type="button">Aleatório</button>
+            <button class="btn ghost" id="lab-undo" type="button">Anular último</button>
+            <button class="btn ghost" id="lab-clear" type="button">Usar mapa do guia</button>
+          </div>
+          <div class="lab-map" id="lab-map" aria-label="Mapa do percurso"></div>
+          <p class="note" id="lab-state" role="status"></p>
         </div>
       </div>
       <div class="panel">
@@ -36802,12 +36820,107 @@ var TB_FIG = {
 
 </script>
 <script>
+/* Mapa do Labirinto (DT2): percurso personalizável. Células: índice = linha * 3 + coluna; linha 0 = entrada (em baixo), linha 6 = junto ao Tumbling. */
+var TB_LAB = (function () {
+  var COLS = 3, ROWS = 7, TOP = ROWS - 1;
+  var row = function (c) { return Math.floor(c / COLS); };
+  var col = function (c) { return c % COLS; };
+  function adjacent(a, b) { return a !== b && Math.abs(row(a) - row(b)) <= 1 && Math.abs(col(a) - col(b)) <= 1; }
+  function neighbours(c) { var o = []; for (var i = 0; i < ROWS * COLS; i++) if (adjacent(c, i)) o.push(i); return o; }
+  function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  // Próximas células possíveis (a primeira tem de ser na linha de entrada).
+  function nextOptions(route) {
+    var out = [], i;
+    if (!route.length) { for (i = 0; i < COLS; i++) out.push(i); return out; }
+    var last = route[route.length - 1];
+    return neighbours(last).filter(function (c) { return route.indexOf(c) < 0; });
+  }
+  function valid(route) { return route.length >= 2 && row(route[route.length - 1]) === TOP; }
+  // Percurso aleatório sem repetir trampolins: começa na entrada, acaba na última linha, com n trampolins.
+  function random(n) {
+    n = Math.max(ROWS, Math.min(ROWS * COLS, n | 0));
+    var steps = 0;
+    function dfs(path, used) {
+      if (++steps > 60000) return null;
+      var last = path[path.length - 1], left = n - path.length;
+      if (left === 0) return row(last) === TOP ? path : null;
+      if (TOP - row(last) > left) return null;
+      var opts = shuffle(neighbours(last).filter(function (c) { return !used[c]; }));
+      for (var i = 0; i < opts.length; i++) {
+        used[opts[i]] = true; path.push(opts[i]);
+        var r = dfs(path, used); if (r) return r;
+        path.pop(); used[opts[i]] = false;
+      }
+      return null;
+    }
+    for (var tries = 0; tries < 40; tries++) {
+      steps = 0;
+      var s = Math.floor(Math.random() * COLS), used = {}; used[s] = true;
+      var r = dfs([s], used); if (r) return r.slice();
+    }
+    return null;
+  }
+
+  // Geometria do desenho (igual ao mapa do guia, 924 x 1316).
+  var W = 924, H = 1316, RH = 114;
+  var ROWY = [1103, 959, 815, 671, 528, 393, 259];
+  function rect(c) {
+    var r = row(c), k = col(c), y = ROWY[r];
+    if (k === 0) return { x: 172, y: y, w: 160, h: RH, lx: 172, lw: 160 };
+    if (k === 1) return { x: 349, y: y, w: 160, h: RH, lx: 349, lw: 160 };
+    if (r <= 4) return { x: 527, y: y, w: 320, h: RH, lx: 527, lw: 140, dark: 667 };
+    if (r === 5) return { x: 527, y: y, w: 138, h: RH, lx: 527, lw: 138 };
+    return { x: 527, y: y, w: 190, h: RH, lx: 527, lw: 190 };
+  }
+  var T = {
+    pt: { staff: '(SÓ PARA STAFF)', entry: '(Entrada Performance)', tri: '(Triângulo)', tum: '(Tumbling)', end: 'FIM', cap: 'Figura: mapa do percurso do Labirinto (uso interno de staff).' },
+    en: { staff: '(STAFF ONLY)', entry: '(Performance entrance)', tri: '(Triangle)', tum: '(Tumbling)', end: 'END', cap: 'Figure: Maze course map (staff only).' }
+  };
+  function draw(route, lang) {
+    var t = T[lang === 'en' ? 'en' : 'pt'];
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var g = cv.getContext('2d');
+    g.fillStyle = '#FAFAFA'; g.fillRect(0, 0, W, H);
+    var FONT = 'Arial, Helvetica, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#000'; g.font = 'bold 23px ' + FONT; g.fillText(t.staff, 495, 50);
+    // Tumbling (fim)
+    g.fillStyle = '#626060'; g.fillRect(172, 92, 650, 136); g.lineWidth = 5; g.strokeStyle = '#000'; g.strokeRect(172, 92, 650, 136);
+    g.textAlign = 'left'; g.fillStyle = '#fff'; g.font = 'bold 28px ' + FONT; g.fillText(t.tum, 181, 118);
+    g.font = 'bold 52px ' + FONT; g.fillStyle = '#000';
+    var endTxt = String(route.length + 1) + ' ', wN = g.measureText(endTxt).width;
+    g.fillText(endTxt, 385, 160); g.fillStyle = '#fff'; g.font = 'bold 46px ' + FONT; g.fillText(t.end, 385 + wN, 160);
+    // Trampolins
+    for (var c = 0; c < ROWS * COLS; c++) {
+      var q = rect(c), idx = route.indexOf(c);
+      g.fillStyle = '#626060'; g.fillRect(q.x, q.y, q.w, q.h);
+      if (q.dark) { g.fillStyle = '#383736'; g.fillRect(q.dark, q.y, q.x + q.w - q.dark, q.h); }
+      g.lineWidth = 5; g.strokeStyle = '#000'; g.strokeRect(q.x, q.y, q.w, q.h);
+      var cx = q.lx + q.lw / 2, cy = q.y + q.h / 2 + 2;
+      g.textAlign = 'center';
+      if (idx >= 0) { g.fillStyle = '#000'; g.font = 'bold 56px ' + FONT; g.fillText(String(idx + 1), cx, cy); }
+      else { g.strokeStyle = '#FF3B30'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(cx - 20, cy - 20); g.lineTo(cx + 20, cy + 20); g.moveTo(cx + 20, cy - 20); g.lineTo(cx - 20, cy + 20); g.stroke(); }
+    }
+    // Triângulo (entre as duas colunas da esquerda, na linha 5)
+    g.fillStyle = '#D4358A'; g.fillRect(309, ROWY[5], 53, RH);
+    g.fillStyle = '#fff'; g.font = 'bold 22px ' + FONT; g.textAlign = 'center'; g.fillText(t.tri, 335, ROWY[5] + RH / 2 + 2);
+    g.textAlign = 'left'; g.fillStyle = '#000'; g.font = 'bold 29px ' + FONT; g.fillText(t.entry, 78, 1262);
+    return { src: cv.toDataURL('image/jpeg', 0.92), w: W, h: H, cap: t.cap };
+  }
+  return { COLS: COLS, ROWS: ROWS, TOP: TOP, row: row, col: col, adjacent: adjacent, nextOptions: nextOptions, valid: valid, random: random, draw: draw, T: T };
+})();
+if (typeof module !== 'undefined') module.exports = TB_LAB;
+
+</script>
+<script>
 // Núcleo: constrói os documentos como "blocos" (em PT ou EN) e converte-os para Word, HTML e texto.
 var TB = (function () {
   var W = 9638, WL = 14570; // largura útil A4 vertical / horizontal (DXA), margens de 2 cm
   var COL = { orange: 'F5A83B', crimson: 'E0245E', blue: '0B4EA2', green: '1BA97B', ink: '222222', grey: '6B6B6B', soft: 'F6F6F6', rule: 'DDDDDD' };
   var TINT = { orange: 'FFF5E6', crimson: 'FDE9EF', green: 'E8F6F1', blue: 'E8EFF9' };
   var PARKS = ['Lisboa', 'Almada', 'Algarve'];
+  var FIG_OVERRIDE = {};
+  function setFig(o) { FIG_OVERRIDE = o || {}; }
 
   var L = {
     pt: {
@@ -36981,7 +37094,7 @@ var TB = (function () {
     B.push({ t: 'h3', c: c, text: l.fObj }); B.push({ t: 'p', c: c, text: t.obj });
     if (t.mat.length) B.push({ t: 'callout', c: c, color: 'orange', title: l.fMat, items: t.mat });
     B.push({ t: 'h3', c: c, text: l.fProc }); B.push({ t: 'ol', c: c, items: t.proc });
-    var fig = (typeof TB_FIG !== 'undefined') ? TB_FIG[d.id] : null;
+    var fig = FIG_OVERRIDE[d.id] || ((typeof TB_FIG !== 'undefined') ? TB_FIG[d.id] : null);
     if (fig) B.push({ t: 'small', c: c, text: l.figLine });
     if (t.pen.length) B.push({ t: 'callout', c: c, color: 'crimson', title: l.fPen, items: t.pen });
     if (t.bonus) B.push({ t: 'callout', c: c, color: 'green', title: l.fBonus, text: t.bonus });
@@ -37225,7 +37338,7 @@ var TB = (function () {
     });
   }
 
-  return { PARKS: PARKS, L: L, COL: COL, TINT: TINT, buildClient: buildClient, buildGeral: buildGeral, buildMonitor: buildMonitor, toDocx: toDocx, toHtml: toHtml, toText: toText,
+  return { setFig: setFig, PARKS: PARKS, L: L, COL: COL, TINT: TINT, buildClient: buildClient, buildGeral: buildGeral, buildMonitor: buildMonitor, toDocx: toDocx, toHtml: toHtml, toText: toText,
     totalMin: totalMin, dur: dur, fmtDate: fmtDate, byId: byId, selected: selected, docMeta: docMeta, tx: tx, gname: gname, hasTorneio: hasTorneio, lg: lg };
 })();
 if (typeof module !== 'undefined') { module.exports = TB; global.TB_DYN = TB_DYN; global.TB_GRP = TB_GRP; }
@@ -37450,7 +37563,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   var KEY = 'tb-planeador-v2';
   var GRPS = ['DT', 'DE', 'DL'];
   var defaults = function () {
-    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true };
+    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17 };
   };
   var state = defaults();
   try { var raw = localStorage.getItem(KEY); if (raw) { var s = JSON.parse(raw); if (s && Array.isArray(s.sel)) { state = Object.assign(defaults(), s); state.docs = Object.assign(defaults().docs, s.docs || {}); } } } catch (e) {}
@@ -37557,7 +37670,39 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     $('b-clear').disabled = !k;
   }
   function monitorOpt() { return { resumo: !!state.docs.resumo, fichas: !!state.docs.fichas, aval: !!state.docs.aval }; }
+  // ---------- Mapa do Labirinto (DT2) ----------
+  var labSig = '', labImg = null;
+  function labOverride() {
+    try {
+      if (state.sel.indexOf('DT2') < 0 || !TB_LAB.valid(state.lab)) return {};
+      var key = state.lab.join(',') + '|' + state.lang;
+      if (key !== labSig) { labImg = TB_LAB.draw(state.lab, state.lang); labSig = key; }
+      return { DT2: { src: labImg.src, w: labImg.w, h: labImg.h, cap: { pt: TB_LAB.T.pt.cap, en: TB_LAB.T.en.cap } } };
+    } catch (e) { return {}; }
+  }
+  function renderLab() {
+    var on = state.sel.indexOf('DT2') >= 0; $('lab-panel').hidden = !on; if (!on) return;
+    var route = state.lab, done = TB_LAB.valid(route), opts = done ? [] : TB_LAB.nextOptions(route), h = '', r, k;
+    h += '<div class="lab-end">TUMBLING · FIM ' + (route.length ? route.length + 1 : '') + '</div>';
+    for (r = TB_LAB.TOP; r >= 0; r--) for (k = 0; k < TB_LAB.COLS; k++) {
+      var c = r * TB_LAB.COLS + k, i = route.indexOf(c), cls = 'lab-c' + (i >= 0 ? ' on' : done ? ' off' : '') + (opts.indexOf(c) >= 0 ? ' next' : '');
+      h += '<button type="button" class="' + cls + '" data-lab="' + c + '" aria-label="Trampolim ' + (i >= 0 ? 'número ' + (i + 1) : 'livre') + '">' + (i >= 0 ? i + 1 : done ? '×' : '') + '</button>';
+    }
+    h += '<div class="lab-in">ENTRADA PERFORMANCE</div>';
+    $('lab-map').innerHTML = h;
+    $('lab-n').value = state.labN;
+    $('lab-state').textContent = !route.length ? 'A usar o mapa do guia (percurso de exemplo).' : done ? 'Percurso definido com ' + route.length + ' trampolins. Será impresso na ficha do monitor.' : 'Percurso incompleto (' + route.length + '). Continua até à fila junto ao Tumbling para o usar na ficha.';
+    $('lab-undo').disabled = !route.length;
+  }
+  function labClick(c) {
+    var route = state.lab;
+    if (route.length && route[route.length - 1] === c) route.pop();
+    else if (TB_LAB.nextOptions(route).indexOf(c) >= 0) route.push(c);
+    else return;
+    save(); renderLab(); renderPreview();
+  }
   function currentBlocks() {
+    TB.setFig(labOverride());
     return ui.doc === 'cliente' ? TB.buildClient(state) : ui.doc === 'geral' ? TB.buildGeral(state) : TB.buildMonitor(state, monitorOpt());
   }
   function canExport() {
@@ -37579,9 +37724,9 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     ['resumo', 'fichas', 'aval'].forEach(function (k) { $('o-' + k).checked = !!state.docs[k]; });
     $('doc-note').textContent = NOTES[ui.doc] + (ui.doc === 'monitor' && !canExport() ? ' Escolhe pelo menos uma parte.' : '');
     var ok = canExport() && !busy;
-    $('b-docx').disabled = !ok || !canSave(); $('b-pdf').disabled = !ok || !canSave();
+    $('b-docx').disabled = !ok || !canSave(); $('b-pdf').disabled = !ok || !canSave(); $('b-print').disabled = !canExport();
   }
-  function refresh() { renderSummary(); renderSel(); syncCards(); renderPreview(); }
+  function refresh() { renderSummary(); renderSel(); renderLab(); syncCards(); renderPreview(); }
 
   /* ---------- Ficheiros ---------- */
   function fileBase() {
@@ -37595,6 +37740,42 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   function docTitle() {
     var en = state.lang === 'en';
     return ui.doc === 'monitor' ? (en ? 'Session preparation sheet' : 'Ficha de preparação da sessão') : (en ? 'Team Building Quantum Park' : 'Team Building Quantum Park');
+  }
+  // ---------- Impressão (documento próprio, sem cabeçalhos/rodapés do browser) ----------
+  function printHtml(blocks, meta, withBar) {
+    var css = ''; document.querySelectorAll('style').forEach(function (s) { css += s.textContent; });
+    var extra = '@page{size:A4;margin:0}html,body{margin:0;background:#fff!important;color:#000}body{display:block}'
+      + '.pr{border:0!important;max-height:none!important;overflow:visible!important;padding:0 16mm!important;background:#fff;box-shadow:none;border-radius:0}'
+      + '.pr .d-scroll{overflow:visible}.pr .d-table,.pr .d-eval{min-width:0!important;font-size:11px}'
+      + 'hr.d-break{border:0;margin:0;height:0;break-after:page;page-break-after:always}.pr .d-fiche{margin-top:0}'
+      + '.pr .d-fig img{max-width:100%;max-height:215mm;width:auto}.pr h1,.pr h2,.pr h3{break-after:avoid}.pr .d-callout,.pr tr,.pr figure{break-inside:avoid}'
+      + 'table.pg{width:100%;border-collapse:collapse}table.pg td{padding:0}.sp-t{height:16mm}.sp-b{height:20mm}'
+      + '.pfoot{position:fixed;left:0;right:0;bottom:8mm;text-align:center;font:9pt Arial,Helvetica,sans-serif;color:#777}'
+      + '.pbar{position:sticky;top:0;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#1A2233;color:#fff;font:14px Arial,sans-serif}.pbar button{font:inherit;padding:8px 14px;border:0;border-radius:6px;background:#FF9F1C;color:#111;font-weight:700;cursor:pointer}'
+      + '@media print{.pbar{display:none}}';
+    return '<!doctype html><html lang="' + meta.lang + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(fileBase()) + '</title><style>' + css + extra + '</style></head><body>'
+      + (withBar ? '<div class="pbar"><button type="button" onclick="window.print()">Imprimir / guardar PDF</button><span>Escolhe "Guardar como PDF" na janela de impressão.</span></div>' : '')
+      + '<div class="pfoot">' + esc(meta.footer) + '</div>'
+      + '<table class="pg"><thead><tr><td><div class="sp-t"></div></td></tr></thead><tfoot><tr><td><div class="sp-b"></div></td></tr></tfoot><tbody><tr><td><div class="sheet pr"><div class="stripe" aria-hidden="true"><i></i><i></i><i></i><i></i></div>' + TB.toHtml(blocks) + '</div></td></tr></tbody></table></body></html>';
+  }
+  function printDoc() {
+    if (!canExport()) return;
+    try {
+      var html = printHtml(currentBlocks(), TB.docMeta(state), false), touch = false;
+      try { touch = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+      if (touch) {
+        var w = window.open('', '_blank');
+        if (w) { w.document.open(); w.document.write(printHtml(currentBlocks(), TB.docMeta(state), true)); w.document.close(); return; }
+      }
+      var f = document.createElement('iframe'); f.setAttribute('aria-hidden', 'true'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+      document.body.appendChild(f);
+      var d = f.contentDocument; d.open(); d.write(html); d.close();
+      setTimeout(function () {
+        var old = document.title; document.title = fileBase();
+        try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { window.print(); }
+        setTimeout(function () { document.title = old; try { f.remove(); } catch (e) {} }, 2000);
+      }, 400);
+    } catch (err) { status('Impressão indisponível: ' + (err && err.message || err)); }
   }
   async function exportAs(kind) {
     if (busy || !canExport()) return;
@@ -37649,7 +37830,11 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     if (t.id === 'b-docx') return exportAs('docx');
     if (t.id === 'b-pdf') return exportAs('pdf');
     if (t.id === 'b-copy') return copy();
-    if (t.id === 'b-print') { try { window.print(); } catch (err) { status('Impressão indisponível: ' + (err && err.message || err)); } return; }
+    if (t.id === 'b-print') return printDoc();
+    if (t.dataset.lab !== undefined) return labClick(+t.dataset.lab);
+    if (t.id === 'lab-rand') { var nn = Math.max(7, Math.min(21, parseInt($('lab-n').value, 10) || 17)); state.labN = nn; var rr = TB_LAB.random(nn); if (rr) state.lab = rr; save(); renderLab(); return renderPreview(); }
+    if (t.id === 'lab-undo') { state.lab.pop(); save(); renderLab(); return renderPreview(); }
+    if (t.id === 'lab-clear') { state.lab = []; save(); renderLab(); return renderPreview(); }
   });
   document.addEventListener('change', function (e) {
     var o = e.target.dataset && e.target.dataset.opt; if (!o) return;
