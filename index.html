@@ -37226,8 +37226,18 @@ var TB = (function () {
   }
 
   // ---------- Word (.docx) ----------
+  // Marca as secções (título até ao próximo título) que devem ficar juntas na mesma página.
+  function markKeep(blocks) {
+    var ok = { h2: 1, p: 1, h3: 1, ol: 1, ul: 1, table: 1, small: 1 };
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].t !== 'h2') continue;
+      var j = i + 1, good = true; while (j < blocks.length && ['h2', 'fiche', 'landscape'].indexOf(blocks[j].t) < 0) { if (!ok[blocks[j].t]) good = false; j++; }
+      if (good) for (var k = i; k < j - 1; k++) blocks[k]._keep = true;
+    }
+  }
   function toDocx(docx, blocks, opt) {
     var D = docx, FONT = 'Arial';
+    markKeep(blocks);
     var run = function (text, o) { return new D.TextRun(Object.assign({ text: text, font: FONT, size: 21, color: COL.ink }, o || {})); };
     var nb = { style: D.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
     var none = { top: nb, bottom: nb, left: nb, right: nb };
@@ -37255,11 +37265,11 @@ var TB = (function () {
       var pad = b.plain ? 35 : 60;
       var cell = function (children, i, o) { return new D.TableCell(Object.assign({ width: { size: cw[i], type: D.WidthType.DXA }, borders: thinB, margins: { top: pad, bottom: pad, left: 140, right: 140 }, verticalAlign: D.VerticalAlign.CENTER, children: children }, o || {})); };
       var head = new D.TableRow({ tableHeader: true, cantSplit: true, children: b.head.map(function (t, i) {
-        return cell([new D.Paragraph({ children: [run(t, { bold: true, color: 'FFFFFF', size: 19 })], spacing: { after: 0 } })], i, { shading: { type: D.ShadingType.CLEAR, fill: COL[b.color], color: 'auto' } });
+        return cell([new D.Paragraph({ keepNext: true, children: [run(t, { bold: true, color: 'FFFFFF', size: 19 })], spacing: { after: 0 } })], i, { shading: { type: D.ShadingType.CLEAR, fill: COL[b.color], color: 'auto' } });
       }) });
       var body = b.rows.map(function (r, ri) {
         return new D.TableRow({ cantSplit: true, children: r.map(function (t, i) {
-          return cell([new D.Paragraph({ spacing: { after: 0, line: 260 }, children: [run(t, i === 0 && !b.plain ? { bold: true, size: 20 } : (b.plain ? { size: 20 } : { size: 20, color: i === 1 ? COL.ink : COL.grey }))] })], i,
+          return cell([new D.Paragraph({ keepNext: ri < b.rows.length - 1 || !!b._keep, spacing: { after: 0, line: 260 }, children: [run(t, i === 0 && !b.plain ? { bold: true, size: 20 } : (b.plain ? { size: 20 } : { size: 20, color: i === 1 ? COL.ink : COL.grey }))] })], i,
             ri % 2 ? { shading: { type: D.ShadingType.CLEAR, fill: COL.soft, color: 'auto' } } : {});
         }) });
       });
@@ -37332,10 +37342,10 @@ var TB = (function () {
         case 'h2': kids.push(h2(b)); break;
         case 'fiche': kids.push(new D.Paragraph({ pageBreakBefore: !b.first, spacing: { after: 40 }, keepNext: true, border: { bottom: { style: D.BorderStyle.SINGLE, size: 8, color: COL.rule, space: 3 } }, children: [run(b.text, { bold: true, size: 32 })] })); break;
         case 'h3': kids.push(new D.Paragraph({ spacing: { before: sz(b, 160, 100), after: 40 }, keepNext: true, children: [run(b.text, { bold: true, size: sz(b, 23, 20) })] })); break;
-        case 'p': kids.push(new D.Paragraph({ spacing: { after: b.tight ? 160 : sz(b, 120, 60), line: sz(b, 300, 255) }, children: [run(b.text, { size: sz(b, 21, 19) })] })); break;
-        case 'small': kids.push(new D.Paragraph({ spacing: { after: 60 }, children: [run(b.text, { size: 17, italics: true, color: COL.grey })] })); break;
-        case 'ul': b.items.forEach(function (x) { kids.push(new D.Paragraph({ numbering: { reference: 'bul', level: 0 }, spacing: { after: 20, line: sz(b, 280, 250) }, children: [run(x, { size: sz(b, 20, 18) })] })); }); break;
-        case 'ol': olInstance++; b.items.forEach(function (x) { kids.push(new D.Paragraph({ numbering: { reference: 'num', level: 0, instance: olInstance }, spacing: { after: 20, line: sz(b, 280, 250) }, children: [run(x, { size: sz(b, 20, 18) })] })); }); break;
+        case 'p': kids.push(new D.Paragraph({ keepNext: !!(b.tight || b._keep), spacing: { after: b.tight ? 160 : sz(b, 120, 60), line: sz(b, 300, 255) }, children: [run(b.text, { size: sz(b, 21, 19) })] })); break;
+        case 'small': kids.push(new D.Paragraph({ keepNext: !!b._keep, spacing: { after: 60 }, children: [run(b.text, { size: 17, italics: true, color: COL.grey })] })); break;
+        case 'ul': b.items.forEach(function (x) { kids.push(new D.Paragraph({ keepNext: !!b._keep, numbering: { reference: 'bul', level: 0 }, spacing: { after: 20, line: sz(b, 280, 250) }, children: [run(x, { size: sz(b, 20, 18) })] })); }); break;
+        case 'ol': olInstance++; b.items.forEach(function (x) { kids.push(new D.Paragraph({ keepNext: !!b._keep, numbering: { reference: 'num', level: 0, instance: olInstance }, spacing: { after: 20, line: sz(b, 280, 250) }, children: [run(x, { size: sz(b, 20, 18) })] })); }); break;
         case 'kv': kids.push(kv(b)); kids.push(spacer(80)); break;
         case 'table': kids.push(table(b)); kids.push(spacer(80)); break;
         case 'callout': kids.push(spacer(b.c ? 40 : 60)); kids.push(callout(b)); break;
@@ -37433,6 +37443,44 @@ var TB_PDF = (function () {
     function h2(b) {
       ensure(60); y += 12; rect(MX, y - 1, 3.2, 19, COL[b.color]);
       text(b.text, MX + 11, y + 1, 15, F.b); y += 26;
+    }
+    // Altura de uma tabela (igual à do desenho) e de um parágrafo, para manter secções juntas.
+    function tableH(b) {
+      var ws = b.widths || [1900, 4838, 2900], tot = ws.reduce(function (a, v) { return a + v; }, 0), cws = ws.map(function (v) { return v / tot * cw; });
+      var s = 9.5, lh = 12.5, padY = b.plain ? 4 : 6, padX = 7, th = lh + 10, first = 0;
+      b.rows.forEach(function (r, ri) {
+        var n = Math.max.apply(null, r.map(function (t, i) { var f = (i === 0 && !b.plain) ? F.b : F.r; return t === '☐' ? 1 : wrap(t, f, s, cws[i] - 2 * padX).length; }));
+        var h = n * lh + 2 * padY; th += h; if (!ri) first = h;
+      });
+      return { all: th + 10, min: lh + 10 + first };
+    }
+    function pH(b) { var s = b.c ? 9.5 : 10.5, lh = s * 1.4; return wrap(b.text, F.r, s, cw).length * lh + (b.tight ? 8 : (b.c ? 3 : 5)); }
+    // Título de secção + frase + tabela: se não couberem na página, passam juntos para a seguinte.
+    function keepSection(i) {
+      // Se a secção inteira (até ao próximo título) cabe numa página, mantém-na toda junta.
+      var tot = 38, jj, ok = true, capS = (orient === 'l' ? PW : PH) - 54 - 82;
+      for (jj = i + 1; jj < blocks.length; jj++) {
+        var q = blocks[jj]; if (q.t === 'h2' || q.t === 'fiche' || q.t === 'landscape') break;
+        if (q.t === 'p') tot += pH(q); else if (q.t === 'h3') tot += (q.c ? 5 : 8) + (q.c ? 10 : 11.5) * 1.5; else if (q.t === 'ol' || q.t === 'ul') tot += listH(q);
+        else if (q.t === 'table') tot += tableH(q).all; else if (q.t === 'small') tot += 15; else { ok = false; break; }
+      }
+      if (ok && tot <= capS) { if (y + tot > bottom() && y > 90) newPage(); return; }
+      var need = 38, j = i + 1;
+      while (j < blocks.length && blocks[j].t === 'p') { need += pH(blocks[j]); j++; }
+      var n = blocks[j];
+      if (n && n.t === 'table') { var t = tableH(n), cap = (orient === 'l' ? PW : PH) - 54 - 82; need += t.all <= cap - need ? t.all : t.min; }
+      else need += 40;
+      if (y + need > bottom() && y > 90) newPage();
+    }
+    function listH(b) { var s = b.c ? 9.5 : 10.5, lh = s * 1.38; return b.items.reduce(function (a, it) { return a + wrap(it, F.r, s, cw - 20).length * lh + 1.5; }, 3); }
+    // Subtítulo (h3) nunca fica sozinho no fim da página: leva consigo o bloco seguinte (lista curta, parágrafo ou tabela) quando este cabe numa página.
+    function keepH3(i, b) {
+      var s = b.c ? 10 : 11.5, need = (b.c ? 5 : 8) + s * 1.5, n = blocks[i + 1], cap = (orient === 'l' ? PW : PH) - 54 - 82;
+      if (n) {
+        var full = n.t === 'table' ? tableH(n).all : (n.t === 'ol' || n.t === 'ul') ? listH(n) : n.t === 'p' ? pH(n) : 0, min = n.t === 'table' ? tableH(n).min : 30;
+        need += full && full <= cap - need ? full : min;
+      }
+      if (y + need > bottom() && y > 90) newPage();
     }
     function fiche(b) {
       if (!b.first) newPage(); else if (y > 90) newPage();
@@ -37546,13 +37594,13 @@ var TB_PDF = (function () {
 
     for (var bi = 0; bi < blocks.length; bi++) { var fb = blocks[bi]; if (fb.t === 'figure' && !fb._img) { var bin = atob(fb.src.split(',')[1]), by = new Uint8Array(bin.length); for (var q = 0; q < bin.length; q++) by[q] = bin.charCodeAt(q); fb._img = await doc.embedJpg(by); } }
     newPage('p');
-    blocks.forEach(function (b) {
+    blocks.forEach(function (b, bi) {
       switch (b.t) {
         case 'landscape': newPage('l'); break;
         case 'title': title(b); break;
-        case 'h2': h2(b); break;
+        case 'h2': keepSection(bi); h2(b); break;
         case 'fiche': fiche(b); break;
-        case 'h3': h3(b); break;
+        case 'h3': keepH3(bi, b); h3(b); break;
         case 'p': p(b); break;
         case 'small': small(b); break;
         case 'ul': list(b, false); break;
@@ -37777,7 +37825,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
       + '.pr{border:0!important;max-height:none!important;overflow:visible!important;padding:0 16mm!important;background:#fff;box-shadow:none;border-radius:0}'
       + '.pr .d-scroll{overflow:visible}.pr .d-table,.pr .d-eval{min-width:0!important;font-size:11px}'
       + 'hr.d-break{border:0;margin:0;height:0;break-after:page;page-break-after:always}.pr .d-fiche{margin-top:0}'
-      + '.pr .d-fig img{max-width:100%;max-height:215mm;width:auto}.pr h1,.pr h2,.pr h3{break-after:avoid}.pr .d-callout,.pr tr,.pr figure{break-inside:avoid}'
+      + '.pr .d-fig img{max-width:100%;max-height:215mm;width:auto}.pr h1,.pr h2,.pr h3{break-after:avoid}.pr .d-callout,.pr tr,.pr figure,.pr .d-scroll{break-inside:avoid}.pr .d-h2,.pr p.d-p{break-after:avoid}'
       + 'table.pg{width:100%;border-collapse:collapse}table.pg td{padding:0}.sp-t{height:16mm}.sp-b{height:20mm}'
       + '.pfoot{position:fixed;left:0;right:0;bottom:8mm;text-align:center;font:9pt Arial,Helvetica,sans-serif;color:#777}'
       + '.pbar{position:sticky;top:0;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#1A2233;color:#fff;font:14px Arial,sans-serif}.pbar button{font:inherit;padding:8px 14px;border:0;border-radius:6px;background:#FF9F1C;color:#111;font-weight:700;cursor:pointer}'
