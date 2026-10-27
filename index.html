@@ -145,11 +145,19 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
   .count { margin-left: 0; }
 }
 .lab-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 8px 0 12px; } .lab-n { margin: 0; width: 150px; }
-.lab-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 360px; margin: 0 auto 8px; user-select: none; }
+.lab-map { display: grid; gap: 8px; max-width: 460px; margin: 0 auto 8px; user-select: none; }
+.lab-row { position: relative; display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 8px; }
+.lab-tri { position: absolute; left: calc((100% - 16px) / 4 - 3px); top: -4px; bottom: -4px; width: 14px; background: #D4358A; border-radius: 3px; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 2; }
+.lab-tri i { font-style: normal; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 8px; font-weight: 800; letter-spacing: .08em; color: #fff; }
+.lab-key { display: inline-block; width: 12px; height: 12px; background: #D4358A; border-radius: 2px; vertical-align: -1px; }
 .lab-end, .lab-in { grid-column: 1 / -1; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .08em; padding: 10px 6px; border: 2px solid var(--line); border-radius: 8px; color: var(--muted, inherit); }
 .lab-end { background: rgba(120,120,120,.18); } .lab-in { border-style: dashed; }
-.lab-c { height: 46px; font-size: 20px; font-weight: 800; border: 2px solid var(--line); border-radius: 8px; background: rgba(120,120,120,.16); color: inherit; cursor: pointer; font-family: inherit; }
+.lab-c { height: 46px; display: flex; align-items: center; padding: 0; font-size: 20px; font-weight: 800; border: 2px solid var(--line); border-radius: 8px; background: rgba(120,120,120,.16); color: inherit; cursor: pointer; font-family: inherit; }
 .lab-c.on { background: var(--o); color: #fff; border-color: var(--o); } .lab-c.next { border-color: var(--b); box-shadow: 0 0 0 2px var(--b) inset; } .lab-c.off { color: #FF3B30; }
+.lab-c .n { display: block; width: 100%; text-align: center; }
+.lab-c.k2 { --lc: rgba(120,120,120,.16); background: linear-gradient(90deg, var(--lc) 44%, rgba(40,40,40,.75) 44%); } .lab-c.k2 .n { width: 44%; }
+.lab-c.k2.r5 { width: 43%; background: var(--lc); } .lab-c.k2.r5 .n { width: 100%; } .lab-c.k2.r6 { width: 59%; background: var(--lc); } .lab-c.k2.r6 .n { width: 100%; }
+.lab-c.k2.on { --lc: var(--o); }
 .lab-c:disabled { cursor: default; opacity: .55; }
 @media (max-width: 520px) { .row2 { grid-template-columns: minmax(0, 1fr); } .sheet { padding: 18px 14px 22px; } .actions .btn { flex: 1 1 140px; } }
 .d-break { border: 0; border-top: 2px dashed var(--paper-line); margin: 22px 0 6px; }
@@ -220,7 +228,9 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
         </div>
         <div class="panel" id="lab-panel" hidden>
           <h2>Mapa do Labirinto (DT2)</h2>
-          <p class="note" id="lab-note">Define a ordem do percurso. Toca nos trampolins por ordem, a partir da entrada, ou gera um percurso aleatório. O mapa é impresso na ficha do monitor.</p>
+          <p class="note" id="lab-note">Define a ordem do percurso. Toca nos trampolins por ordem, a partir do ponto de início, ou gera um percurso aleatório. O mapa é impresso na ficha do monitor.</p>
+          <label class="field"><span class="l">O PERCURSO COMEÇA</span>
+            <select id="lab-dir"><option value="up">Na entrada Performance (acaba junto ao Tumbling)</option><option value="down">No Tumbling (acaba na entrada Performance)</option></select></label>
           <div class="lab-bar">
             <label class="field lab-n"><span class="l">TRAMPOLINS NO PERCURSO</span><input id="lab-n" type="number" min="7" max="21" value="17" inputmode="numeric"></label>
             <button class="btn" id="lab-rand" type="button">Aleatório</button>
@@ -228,6 +238,7 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
             <button class="btn ghost" id="lab-clear" type="button">Usar mapa do guia</button>
           </div>
           <div class="lab-map" id="lab-map" aria-label="Mapa do percurso"></div>
+          <p class="note"><span class="lab-key"></span> Triângulo: obstáculo entre os trampolins da esquerda e do meio, na fila onde se encontram o 14 e o 15 do mapa original.</p>
           <p class="note" id="lab-state" role="status"></p>
         </div>
       </div>
@@ -36829,22 +36840,25 @@ var TB_LAB = (function () {
   function neighbours(c) { var o = []; for (var i = 0; i < ROWS * COLS; i++) if (adjacent(c, i)) o.push(i); return o; }
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   // Próximas células possíveis (a primeira tem de ser na linha de entrada).
-  function nextOptions(route) {
+  // dir 'up': começa na entrada (linha 0) e acaba junto ao Tumbling; dir 'down': começa junto ao Tumbling e acaba na entrada.
+  function startRow(dir) { return dir === 'down' ? TOP : 0; }
+  function endRow(dir) { return dir === 'down' ? 0 : TOP; }
+  function nextOptions(route, dir) {
     var out = [], i;
-    if (!route.length) { for (i = 0; i < COLS; i++) out.push(i); return out; }
+    if (!route.length) { for (i = 0; i < COLS; i++) out.push(startRow(dir) * COLS + i); return out; }
     var last = route[route.length - 1];
     return neighbours(last).filter(function (c) { return route.indexOf(c) < 0; });
   }
-  function valid(route) { return route.length >= 2 && row(route[route.length - 1]) === TOP; }
+  function valid(route, dir) { return route.length >= 2 && row(route[route.length - 1]) === endRow(dir); }
   // Percurso aleatório sem repetir trampolins: começa na entrada, acaba na última linha, com n trampolins.
-  function random(n) {
+  function random(n, dir) {
     n = Math.max(ROWS, Math.min(ROWS * COLS, n | 0));
     var steps = 0;
     function dfs(path, used) {
       if (++steps > 60000) return null;
       var last = path[path.length - 1], left = n - path.length;
-      if (left === 0) return row(last) === TOP ? path : null;
-      if (TOP - row(last) > left) return null;
+      if (left === 0) return row(last) === endRow(dir) ? path : null;
+      if (Math.abs(endRow(dir) - row(last)) > left) return null;
       var opts = shuffle(neighbours(last).filter(function (c) { return !used[c]; }));
       for (var i = 0; i < opts.length; i++) {
         used[opts[i]] = true; path.push(opts[i]);
@@ -36855,7 +36869,7 @@ var TB_LAB = (function () {
     }
     for (var tries = 0; tries < 40; tries++) {
       steps = 0;
-      var s = Math.floor(Math.random() * COLS), used = {}; used[s] = true;
+      var s = startRow(dir) * COLS + Math.floor(Math.random() * COLS), used = {}; used[s] = true;
       var r = dfs([s], used); if (r) return r.slice();
     }
     return null;
@@ -36873,10 +36887,11 @@ var TB_LAB = (function () {
     return { x: 527, y: y, w: 190, h: RH, lx: 527, lw: 190 };
   }
   var T = {
-    pt: { staff: '(SÓ PARA STAFF)', entry: '(Entrada Performance)', tri: '(Triângulo)', tum: '(Tumbling)', end: 'FIM', cap: 'Figura: mapa do percurso do Labirinto (uso interno de staff).' },
-    en: { staff: '(STAFF ONLY)', entry: '(Performance entrance)', tri: '(Triangle)', tum: '(Tumbling)', end: 'END', cap: 'Figure: Maze course map (staff only).' }
+    pt: { staff: '(SÓ PARA STAFF)', entry: '(Entrada Performance)', tri: 'TRIÂNGULO', tum: '(Tumbling)', end: 'FIM', start: 'INÍCIO', cap: 'Figura: mapa do percurso do Labirinto (uso interno de staff).' },
+    en: { staff: '(STAFF ONLY)', entry: '(Performance entrance)', tri: 'TRIANGLE', tum: '(Tumbling)', end: 'END', start: 'START', cap: 'Figure: Maze course map (staff only).' }
   };
-  function draw(route, lang) {
+  function draw(route, lang, dir) {
+    var down = dir === 'down';
     var t = T[lang === 'en' ? 'en' : 'pt'];
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var g = cv.getContext('2d');
@@ -36888,8 +36903,8 @@ var TB_LAB = (function () {
     g.fillStyle = '#626060'; g.fillRect(172, 92, 650, 136); g.lineWidth = 5; g.strokeStyle = '#000'; g.strokeRect(172, 92, 650, 136);
     g.textAlign = 'left'; g.fillStyle = '#fff'; g.font = 'bold 28px ' + FONT; g.fillText(t.tum, 181, 118);
     g.font = 'bold 52px ' + FONT; g.fillStyle = '#000';
-    var endTxt = String(route.length + 1) + ' ', wN = g.measureText(endTxt).width;
-    g.fillText(endTxt, 385, 160); g.fillStyle = '#fff'; g.font = 'bold 46px ' + FONT; g.fillText(t.end, 385 + wN, 160);
+    if (down) { g.fillStyle = '#fff'; g.font = 'bold 46px ' + FONT; g.fillText(t.start, 385, 160); }
+    else { var endTxt = String(route.length + 1) + ' ', wN = g.measureText(endTxt).width; g.fillText(endTxt, 385, 160); g.fillStyle = '#fff'; g.font = 'bold 46px ' + FONT; g.fillText(t.end, 385 + wN, 160); }
     // Trampolins
     for (var c = 0; c < ROWS * COLS; c++) {
       var q = rect(c), idx = route.indexOf(c);
@@ -36902,12 +36917,12 @@ var TB_LAB = (function () {
       else { g.strokeStyle = '#FF3B30'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(cx - 20, cy - 20); g.lineTo(cx + 20, cy + 20); g.moveTo(cx + 20, cy - 20); g.lineTo(cx - 20, cy + 20); g.stroke(); }
     }
     // Triângulo (entre as duas colunas da esquerda, na linha 5)
-    g.fillStyle = '#D4358A'; g.fillRect(309, ROWY[5], 53, RH);
-    g.fillStyle = '#fff'; g.font = 'bold 22px ' + FONT; g.textAlign = 'center'; g.fillText(t.tri, 335, ROWY[5] + RH / 2 + 2);
-    g.textAlign = 'left'; g.fillStyle = '#000'; g.font = 'bold 29px ' + FONT; g.fillText(t.entry, 78, 1262);
+    g.fillStyle = '#D4358A'; g.fillRect(310, ROWY[5] - 10, 50, RH + 20); g.lineWidth = 4; g.strokeStyle = '#000'; g.strokeRect(310, ROWY[5] - 10, 50, RH + 20);
+    g.save(); g.translate(335, ROWY[5] + RH / 2); g.rotate(-Math.PI / 2); g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = 'bold 22px ' + FONT; g.fillText(t.tri, 0, 1); g.restore();
+    g.textAlign = 'left'; g.fillStyle = '#000'; g.font = 'bold 29px ' + FONT; g.fillText(down ? t.entry + ' · ' + (route.length + 1) + ' ' + t.end : t.entry, 78, 1262);
     return { src: cv.toDataURL('image/jpeg', 0.92), w: W, h: H, cap: t.cap };
   }
-  return { COLS: COLS, ROWS: ROWS, TOP: TOP, row: row, col: col, adjacent: adjacent, nextOptions: nextOptions, valid: valid, random: random, draw: draw, T: T };
+  return { startRow: startRow, endRow: endRow, COLS: COLS, ROWS: ROWS, TOP: TOP, row: row, col: col, adjacent: adjacent, nextOptions: nextOptions, valid: valid, random: random, draw: draw, T: T };
 })();
 if (typeof module !== 'undefined') module.exports = TB_LAB;
 
@@ -37563,7 +37578,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   var KEY = 'tb-planeador-v2';
   var GRPS = ['DT', 'DE', 'DL'];
   var defaults = function () {
-    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17 };
+    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17, labDir: 'up' };
   };
   var state = defaults();
   try { var raw = localStorage.getItem(KEY); if (raw) { var s = JSON.parse(raw); if (s && Array.isArray(s.sel)) { state = Object.assign(defaults(), s); state.docs = Object.assign(defaults().docs, s.docs || {}); } } } catch (e) {}
@@ -37674,30 +37689,35 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   var labSig = '', labImg = null;
   function labOverride() {
     try {
-      if (state.sel.indexOf('DT2') < 0 || !TB_LAB.valid(state.lab)) return {};
-      var key = state.lab.join(',') + '|' + state.lang;
-      if (key !== labSig) { labImg = TB_LAB.draw(state.lab, state.lang); labSig = key; }
+      if (state.sel.indexOf('DT2') < 0 || !TB_LAB.valid(state.lab, state.labDir)) return {};
+      var key = state.lab.join(',') + '|' + state.lang + '|' + state.labDir;
+      if (key !== labSig) { labImg = TB_LAB.draw(state.lab, state.lang, state.labDir); labSig = key; }
       return { DT2: { src: labImg.src, w: labImg.w, h: labImg.h, cap: { pt: TB_LAB.T.pt.cap, en: TB_LAB.T.en.cap } } };
     } catch (e) { return {}; }
   }
   function renderLab() {
     var on = state.sel.indexOf('DT2') >= 0; $('lab-panel').hidden = !on; if (!on) return;
-    var route = state.lab, done = TB_LAB.valid(route), opts = done ? [] : TB_LAB.nextOptions(route), h = '', r, k;
-    h += '<div class="lab-end">TUMBLING · FIM ' + (route.length ? route.length + 1 : '') + '</div>';
-    for (r = TB_LAB.TOP; r >= 0; r--) for (k = 0; k < TB_LAB.COLS; k++) {
-      var c = r * TB_LAB.COLS + k, i = route.indexOf(c), cls = 'lab-c' + (i >= 0 ? ' on' : done ? ' off' : '') + (opts.indexOf(c) >= 0 ? ' next' : '');
-      h += '<button type="button" class="' + cls + '" data-lab="' + c + '" aria-label="Trampolim ' + (i >= 0 ? 'número ' + (i + 1) : 'livre') + '">' + (i >= 0 ? i + 1 : done ? '×' : '') + '</button>';
+    var dir = state.labDir, down = dir === 'down', route = state.lab, done = TB_LAB.valid(route, dir), opts = done ? [] : TB_LAB.nextOptions(route, dir), h = '', r, k;
+    h += '<div class="lab-end">TUMBLING' + (down ? ' · INÍCIO' : route.length ? ' · FIM ' + (route.length + 1) : '') + '</div>';
+    for (r = TB_LAB.TOP; r >= 0; r--) {
+      h += '<div class="lab-row r' + r + '">';
+      for (k = 0; k < TB_LAB.COLS; k++) {
+        var c = r * TB_LAB.COLS + k, i = route.indexOf(c), cls = 'lab-c k' + k + ' r' + r + (i >= 0 ? ' on' : done ? ' off' : '') + (opts.indexOf(c) >= 0 ? ' next' : '');
+        h += '<button type="button" class="' + cls + '" data-lab="' + c + '" aria-label="Trampolim ' + (i >= 0 ? 'número ' + (i + 1) : 'livre') + '"><span class="n">' + (i >= 0 ? i + 1 : done ? '×' : '') + '</span></button>';
+      }
+      if (r === 5) h += '<span class="lab-tri" title="Triângulo (obstáculo)"><i>TRIÂNGULO</i></span>';
+      h += '</div>';
     }
-    h += '<div class="lab-in">ENTRADA PERFORMANCE</div>';
+    h += '<div class="lab-in">ENTRADA PERFORMANCE' + (down && route.length ? ' · FIM ' + (route.length + 1) : '') + '</div>';
     $('lab-map').innerHTML = h;
-    $('lab-n').value = state.labN;
-    $('lab-state').textContent = !route.length ? 'A usar o mapa do guia (percurso de exemplo).' : done ? 'Percurso definido com ' + route.length + ' trampolins. Será impresso na ficha do monitor.' : 'Percurso incompleto (' + route.length + '). Continua até à fila junto ao Tumbling para o usar na ficha.';
+    $('lab-n').value = state.labN; $('lab-dir').value = dir;
+    $('lab-state').textContent = !route.length ? 'A usar o mapa do guia (percurso de exemplo).' : done ? 'Percurso definido com ' + route.length + ' trampolins. Será impresso na ficha do monitor.' : 'Percurso incompleto (' + route.length + '). Continua até à fila ' + (down ? 'junto à entrada' : 'junto ao Tumbling') + ' para o usar na ficha.';
     $('lab-undo').disabled = !route.length;
   }
   function labClick(c) {
     var route = state.lab;
     if (route.length && route[route.length - 1] === c) route.pop();
-    else if (TB_LAB.nextOptions(route).indexOf(c) >= 0) route.push(c);
+    else if (TB_LAB.nextOptions(route, state.labDir).indexOf(c) >= 0) route.push(c);
     else return;
     save(); renderLab(); renderPreview();
   }
@@ -37832,11 +37852,12 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     if (t.id === 'b-copy') return copy();
     if (t.id === 'b-print') return printDoc();
     if (t.dataset.lab !== undefined) return labClick(+t.dataset.lab);
-    if (t.id === 'lab-rand') { var nn = Math.max(7, Math.min(21, parseInt($('lab-n').value, 10) || 17)); state.labN = nn; var rr = TB_LAB.random(nn); if (rr) state.lab = rr; save(); renderLab(); return renderPreview(); }
+    if (t.id === 'lab-rand') { var nn = Math.max(7, Math.min(21, parseInt($('lab-n').value, 10) || 17)); state.labN = nn; var rr = TB_LAB.random(nn, state.labDir); if (rr) state.lab = rr; save(); renderLab(); return renderPreview(); }
     if (t.id === 'lab-undo') { state.lab.pop(); save(); renderLab(); return renderPreview(); }
     if (t.id === 'lab-clear') { state.lab = []; save(); renderLab(); return renderPreview(); }
   });
   document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'lab-dir') { var nd = e.target.value === 'down' ? 'down' : 'up'; if (nd !== state.labDir) { state.lab = TB_LAB.valid(state.lab, state.labDir) ? state.lab.slice().reverse() : []; state.labDir = nd; save(); renderLab(); renderPreview(); } return; }
     var o = e.target.dataset && e.target.dataset.opt; if (!o) return;
     state.docs[o] = e.target.checked; save(); renderPreview();
   });
