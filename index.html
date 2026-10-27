@@ -36948,6 +36948,10 @@ var TB = (function () {
       introGeral: 'Apresentamos o conjunto de dinâmicas e jogos que o Quantum Park tem disponíveis para Team Building. Cada uma trabalha competências diferentes, num ambiente descontraído e diferente do dia a dia de trabalho.',
       zonesPre: 'O programa inclui atividades em ', zonesPost: ', sempre acompanhadas por um monitor do Quantum Park.', and: ' e ',
       zonesPreGeral: 'Estão organizadas por zona: ', zonesPostGeral: '.',
+      sec: {
+        DT: { coop: 'Desafios sobre trampolins e estruturas de equilíbrio, em que o sucesso só chega se a equipa trabalhar em conjunto.', comp: 'Desafios de equilíbrio e agilidade para equipas que gostam de medir forças.', mix: 'Desafios de equilíbrio e agilidade que misturam cooperação e competição saudável.' },
+        DE: { coop: 'Desafios na parede de escalada, onde a confiança e a entreajuda fazem a diferença até ao topo.', comp: 'Desafios de escalada contra o relógio, em que cada tempo conta para a equipa.', mix: 'Desafios na parede de escalada que misturam cooperação, confiança e competição saudável.' }
+      },
       secCoop: 'Desafios cooperativos em que o sucesso só chega se a equipa trabalhar em conjunto.',
       secComp: 'Desafios competitivos para equipas que gostam de medir forças.',
       secMix: 'Desafios que misturam cooperação e competição saudável.',
@@ -36982,6 +36986,10 @@ var TB = (function () {
       introGeral: 'Here is the full set of activities and games Quantum Park offers for team building. Each one builds different skills, in a relaxed setting far from the everyday workplace.',
       zonesPre: 'The programme includes activities in ', zonesPost: ', always led by a Quantum Park monitor.', and: ' and ',
       zonesPreGeral: 'They are organised by area: ', zonesPostGeral: '.',
+      sec: {
+        DT: { coop: 'Challenges on trampolines and balance structures, where success only comes if the team works together.', comp: 'Balance and agility challenges for teams who like to test their strength.', mix: 'Balance and agility challenges that mix cooperation with healthy competition.' },
+        DE: { coop: 'Challenges on the climbing wall, where trust and mutual support make the difference all the way to the top.', comp: 'Climbing challenges against the clock, where every time counts for the team.', mix: 'Climbing wall challenges that mix cooperation, trust and healthy competition.' }
+      },
       secCoop: 'Cooperative challenges where success only comes if the team works together.',
       secComp: 'Competitive challenges for teams that enjoy testing their strength.',
       secMix: 'Challenges that mix cooperation and healthy competition.',
@@ -37050,7 +37058,8 @@ var TB = (function () {
   function secIntro(items, s) {
     var l = L[lg(s)];
     if (items[0].grp === 'DL') return l.secLaser;
-    var allC = items.every(function (d) { return d.tipo === 'coop'; }), allP = items.every(function (d) { return d.tipo === 'comp'; });
+    var allC = items.every(function (d) { return d.tipo === 'coop'; }), allP = items.every(function (d) { return d.tipo === 'comp'; }), k = allC ? 'coop' : allP ? 'comp' : 'mix';
+    if (l.sec && l.sec[items[0].grp]) return l.sec[items[0].grp][k];
     return allC ? l.secCoop : allP ? l.secComp : l.secMix;
   }
   function rowsOf(items, s) { return items.map(function (d) { var t = tx(d, s); return [t.nome, t.cliente, t.comp.join(', ')]; }); }
