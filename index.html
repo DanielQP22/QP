@@ -164,6 +164,7 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
 .q-it { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; border-top: 1px solid var(--line); cursor: pointer; } .q-it input { margin-top: 4px; flex: none; width: 18px; height: 18px; }
 .q-it span { min-width: 0; flex: 1; } .q-it b { display: block; font-weight: 600; } .q-it em { display: block; font-style: normal; font-size: 12.5px; color: var(--muted); } .q-it button { flex: none; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 6px; }
 .q-add { margin-top: 10px; border: 1px dashed var(--line); border-radius: 8px; padding: 0 12px 12px; } .q-add > summary { padding-left: 0; }
+.filebar { margin: 0; padding: 10px 16px; background: #FFF4DC; color: #4A3200; font-size: 14px; line-height: 1.4; border-bottom: 1px solid #F0D79A; } .filebar a { color: #8A4B00; font-weight: 700; word-break: break-all; }
 @media (max-width: 520px) { .row2 { grid-template-columns: minmax(0, 1fr); } .sheet { padding: 18px 14px 22px; } .actions .btn { flex: 1 1 140px; } }
 .d-break { border: 0; border-top: 2px dashed var(--paper-line); margin: 22px 0 6px; }
 .d-evf { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 0 10px; font-size: 13px; }
@@ -181,6 +182,10 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
 <body>
 <div class="bar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="wrap">
+  <div class="filebar" id="file-banner" hidden>
+    <b>A guardar no telemóvel?</b> Abrir este ficheiro diretamente (WhatsApp, Ficheiros) bloqueia os downloads. Abre a versão online no Safari ou no Chrome:
+    <a id="file-link" href="https://danielqp22.github.io/QP/" target="_blank" rel="noopener">https://danielqp22.github.io/QP/</a>
+  </div>
   <header class="top">
     <div>
       <div class="eyebrow">Quantum Park · Team Building</div>
@@ -38905,6 +38910,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   $('f-cliente').value = state.cliente; $('f-data').value = state.data; $('f-pax').value = state.pax; $('f-park').value = state.park; $('f-lang').value = state.lang;
   $('f-dur').value = String(state.durTotal || 0); $('f-brief').value = state.briefing; $('f-notas').value = state.notas;
   renderGrid(); refresh();
+  try { var mob = /iP(hone|ad|od)|Android/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform)); if (mob && location.protocol !== 'http:' && location.protocol !== 'https:' && !inClaude) $('file-banner').hidden = false; } catch (e) {}
   try { if (/iP(hone|ad|od)|Android/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform))) $('ios-note').hidden = false; } catch (e) {}
   (async function () {
     try { dl = (window.claude && window.claude.use) ? await window.claude.use('downloads') : null; } catch (e) { dl = null; }
