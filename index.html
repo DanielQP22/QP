@@ -159,6 +159,11 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
 .lab-c.k2.r5 { width: 43%; background: var(--lc); } .lab-c.k2.r5 .n { width: 100%; } .lab-c.k2.r6 { width: 59%; background: var(--lc); } .lab-c.k2.r6 .n { width: 100%; }
 .lab-c.k2.on { --lc: var(--o); }
 .lab-c:disabled { cursor: default; opacity: .55; }
+.q-grp { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; background: var(--surface); } .q-grp > summary, .q-add > summary { cursor: pointer; padding: 10px 12px; font-weight: 700; list-style: none; display: flex; align-items: center; gap: 8px; } .q-grp > summary::-webkit-details-marker, .q-add > summary::-webkit-details-marker { display: none; }
+.q-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; } .q-n { margin-left: auto; font-weight: 600; font-size: 12px; color: var(--muted); }
+.q-it { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; border-top: 1px solid var(--line); cursor: pointer; } .q-it input { margin-top: 4px; flex: none; width: 18px; height: 18px; }
+.q-it span { min-width: 0; flex: 1; } .q-it b { display: block; font-weight: 600; } .q-it em { display: block; font-style: normal; font-size: 12.5px; color: var(--muted); } .q-it button { flex: none; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 6px; }
+.q-add { margin-top: 10px; border: 1px dashed var(--line); border-radius: 8px; padding: 0 12px 12px; } .q-add > summary { padding-left: 0; }
 @media (max-width: 520px) { .row2 { grid-template-columns: minmax(0, 1fr); } .sheet { padding: 18px 14px 22px; } .actions .btn { flex: 1 1 140px; } }
 .d-break { border: 0; border-top: 2px dashed var(--paper-line); margin: 22px 0 6px; }
 .d-evf { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 4px 0 10px; font-size: 13px; }
@@ -226,6 +231,23 @@ ol.sel .nm span { color: var(--muted); font-variant-numeric: tabular-nums; }
           <h2>Programa</h2>
           <ol class="sel" id="sel"></ol>
           <div class="totals" id="totals"></div>
+        </div>
+        <div class="panel" id="q-panel" hidden>
+          <h2>Perguntas · Cultura nas Alturas (DE3)</h2>
+          <p class="note">Escolhe as perguntas para os coletes. Aparecem, com as respostas, numa página própria a seguir à ficha do monitor.</p>
+          <div class="lab-bar">
+            <label class="field lab-n"><span class="l">PERGUNTAS POR COR</span><input id="q-per" type="number" min="1" max="16" value="2" inputmode="numeric"></label>
+            <button class="btn" id="q-rand" type="button">Sortear</button>
+            <button class="btn ghost" id="q-clear" type="button">Limpar seleção</button>
+          </div>
+          <p class="note" id="q-count" role="status"></p>
+          <div id="q-body"></div>
+          <details class="q-add" id="q-add-box"><summary>Adicionar uma pergunta minha</summary>
+            <label class="field"><span class="l">COR DO COLETE</span><select id="q-c"><option value="R">Vermelho · Fácil</option><option value="G">Verde · Fácil / médio</option><option value="O">Laranja · Médio</option><option value="B">Azul · Desafio</option></select></label>
+            <label class="field"><span class="l">PERGUNTA</span><input id="q-q" type="text" autocomplete="off"></label>
+            <label class="field"><span class="l">RESPOSTA</span><input id="q-a" type="text" autocomplete="off"></label>
+            <button class="btn" id="q-add" type="button">Adicionar</button>
+          </details>
         </div>
         <div class="panel" id="lab-panel" hidden>
           <h2>Mapa do Labirinto (DT2)</h2>
@@ -36929,6 +36951,891 @@ if (typeof module !== 'undefined') module.exports = TB_LAB;
 
 </script>
 <script>
+/* Banco de perguntas do "Cultura nas Alturas" (DE3). Cada cor de colete tem um nível. As respostas são para consulta do monitor. */
+var TB_Q = (function () {
+  var COLORS = [
+    { id: 'R', col: 'crimson', pt: 'Vermelho', en: 'Red', lvPt: 'Fácil', lvEn: 'Easy' },
+    { id: 'G', col: 'green', pt: 'Verde', en: 'Green', lvPt: 'Fácil / médio', lvEn: 'Easy / medium' },
+    { id: 'O', col: 'orange', pt: 'Laranja', en: 'Orange', lvPt: 'Médio', lvEn: 'Medium' },
+    { id: 'B', col: 'blue', pt: 'Azul', en: 'Blue', lvPt: 'Desafio', lvEn: 'Challenge' }
+  ];
+  // [cor, pergunta PT, resposta PT, pergunta EN, resposta EN]
+  var RAW = [
+    ['R', 'Quantos dias tem uma semana?', '7.', 'How many days are in a week?', '7.'],
+    ['R', 'Quantos meses tem um ano?', '12.', 'How many months are in a year?', '12.'],
+    ['R', 'Quantas patas tem uma aranha?', '8.', 'How many legs does a spider have?', '8.'],
+    ['R', 'Qual é a capital de Portugal?', 'Lisboa.', 'What is the capital of Portugal?', 'Lisbon.'],
+    ['R', 'Qual é o planeta em que vivemos?', 'Terra.', 'Which planet do we live on?', 'Earth.'],
+    ['R', 'Que animal diz «miau»?', 'Gato.', 'Which animal says "meow"?', 'Cat.'],
+    ['R', 'Quantas rodas tem uma bicicleta normal?', '2.', 'How many wheels does a normal bicycle have?', '2.'],
+    ['R', 'Que cor resulta de misturar azul e amarelo?', 'Verde.', 'Which colour do you get by mixing blue and yellow?', 'Green.'],
+    ['R', 'Quantos minutos tem uma hora?', '60.', 'How many minutes are in an hour?', '60.'],
+    ['R', 'Qual é o contrário de quente?', 'Frio.', 'What is the opposite of hot?', 'Cold.'],
+    ['R', 'Que estrela ilumina a Terra durante o dia?', 'O Sol.', 'Which star lights the Earth during the day?', 'The Sun.'],
+    ['R', 'Em que estação do ano costuma nevar mais?', 'Inverno.', 'In which season does it snow the most?', 'Winter.'],
+    ['R', 'Quantos dedos tem uma mão?', '5.', 'How many fingers are on one hand?', '5.'],
+    ['R', 'Qual é a cor do céu num dia limpo?', 'Azul.', 'What colour is the sky on a clear day?', 'Blue.'],
+    ['R', 'Que animal diz «au-au»?', 'Cão.', 'Which animal says "woof"?', 'Dog.'],
+    ['R', 'Quantas estações tem o ano?', '4.', 'How many seasons are there in a year?', '4.'],
+
+    ['G', 'Diz 3 países europeus.', 'Ex.: Portugal, Espanha, França.', 'Name 3 European countries.', 'E.g.: Portugal, Spain, France.'],
+    ['G', 'Diz 3 animais que vivem na água.', 'Ex.: golfinho, tubarão, polvo.', 'Name 3 animals that live in water.', 'E.g.: dolphin, shark, octopus.'],
+    ['G', 'Diz 3 desportos que se jogam com bola.', 'Ex.: futebol, basquetebol, voleibol.', 'Name 3 sports played with a ball.', 'E.g.: football, basketball, volleyball.'],
+    ['G', 'Quantos lados tem um triângulo?', '3.', 'How many sides does a triangle have?', '3.'],
+    ['G', 'Quantos continentes se consideram normalmente?', '7 (aceitar 6 conforme o modelo ensinado).', 'How many continents are usually counted?', '7 (accept 6, depending on the model taught).'],
+    ['G', 'Qual é o maior animal terrestre?', 'Elefante-africano.', 'What is the largest land animal?', 'African elephant.'],
+    ['G', 'Qual é o oceano que banha a costa de Portugal?', 'Atlântico.', 'Which ocean borders the coast of Portugal?', 'Atlantic.'],
+    ['G', 'Que órgão usamos principalmente para respirar?', 'Pulmões.', 'Which organ do we mainly use to breathe?', 'Lungs.'],
+    ['G', 'Quantas cores tem tradicionalmente o arco-íris?', '7.', 'How many colours does a rainbow traditionally have?', '7.'],
+    ['G', 'Qual é o primeiro mês do ano?', 'Janeiro.', 'What is the first month of the year?', 'January.'],
+    ['G', 'Que língua se fala principalmente no Brasil?', 'Português.', 'Which language is mainly spoken in Brazil?', 'Portuguese.'],
+    ['G', 'Qual é o satélite natural da Terra?', 'Lua.', 'What is the Earth\'s natural satellite?', 'The Moon.'],
+    ['G', 'Qual é a capital de França?', 'Paris.', 'What is the capital of France?', 'Paris.'],
+    ['G', 'Quantos dias tem fevereiro num ano normal?', '28.', 'How many days does February have in a normal year?', '28.'],
+    ['G', 'Diz 3 instrumentos musicais.', 'Ex.: guitarra, piano, violino.', 'Name 3 musical instruments.', 'E.g.: guitar, piano, violin.'],
+    ['G', 'Qual é o animal terrestre mais rápido?', 'Chita (guepardo).', 'What is the fastest land animal?', 'Cheetah.'],
+
+    ['O', 'Diz 5 capitais de países.', 'Ex.: Lisboa, Madrid, Paris, Roma, Londres.', 'Name 5 capital cities.', 'E.g.: Lisbon, Madrid, Paris, Rome, London.'],
+    ['O', 'Diz 4 frutas diferentes.', 'Quaisquer 4 frutas válidas.', 'Name 4 different fruits.', 'Any 4 valid fruits.'],
+    ['O', 'Quantos jogadores de cada equipa estão em campo num jogo de futebol?', '11.', 'How many players per team are on the pitch in a football match?', '11.'],
+    ['O', 'Qual é o maior planeta do Sistema Solar?', 'Júpiter.', 'What is the largest planet in the Solar System?', 'Jupiter.'],
+    ['O', 'Em que direção nasce o Sol?', 'Este / nascente.', 'In which direction does the Sun rise?', 'East.'],
+    ['O', 'Quantos lados tem um hexágono?', '6.', 'How many sides does a hexagon have?', '6.'],
+    ['O', 'Que instrumento usamos para medir a temperatura?', 'Termómetro.', 'Which instrument do we use to measure temperature?', 'Thermometer.'],
+    ['O', 'Qual é o metal normalmente atraído por um íman?', 'Ferro (também níquel e cobalto).', 'Which metal is usually attracted by a magnet?', 'Iron (also nickel and cobalt).'],
+    ['O', 'Quantos segundos tem um minuto?', '60.', 'How many seconds are in a minute?', '60.'],
+    ['O', 'Qual é a capital de Espanha?', 'Madrid.', 'What is the capital of Spain?', 'Madrid.'],
+    ['O', 'Que animal é conhecido como «rei da selva»?', 'Leão (aceitar como expressão comum).', 'Which animal is known as the "king of the jungle"?', 'Lion (accept as a common expression).'],
+    ['O', 'Quantos planetas do Sistema Solar são gigantes gasosos/gelados?', '4: Júpiter, Saturno, Urano e Neptuno.', 'How many planets in the Solar System are gas/ice giants?', '4: Jupiter, Saturn, Uranus and Neptune.'],
+    ['O', 'Quantos lados tem um octógono?', '8.', 'How many sides does an octagon have?', '8.'],
+    ['O', 'Qual é a fórmula química da água?', 'H2O.', 'What is the chemical formula of water?', 'H2O.'],
+    ['O', 'Quantos jogadores de cada equipa estão em campo num jogo de basquetebol?', '5.', 'How many players per team are on court in a basketball game?', '5.'],
+    ['O', 'Em que continente fica o Egito?', 'África.', 'On which continent is Egypt?', 'Africa.'],
+
+    ['B', 'Diz 5 países que começam pela letra P.', 'Ex.: Portugal, Polónia, Panamá, Paraguai, Paquistão.', 'Name 5 countries that start with the letter P.', 'E.g.: Portugal, Poland, Panama, Paraguay, Pakistan.'],
+    ['B', 'Diz 5 coisas que podes encontrar numa cozinha.', 'Quaisquer 5 respostas válidas.', 'Name 5 things you can find in a kitchen.', 'Any 5 valid answers.'],
+    ['B', 'Diz 5 modalidades olímpicas.', 'Ex.: atletismo, natação, judo, ginástica, ciclismo.', 'Name 5 Olympic sports.', 'E.g.: athletics, swimming, judo, gymnastics, cycling.'],
+    ['B', 'Quantos lados tem um dado normal?', '6.', 'How many sides does a normal die have?', '6.'],
+    ['B', 'Qual é o nome do processo pelo qual as plantas produzem alimento usando luz?', 'Fotossíntese.', 'What is the name of the process by which plants make food using light?', 'Photosynthesis.'],
+    ['B', 'Quantos anéis tem o símbolo dos Jogos Olímpicos?', '5.', 'How many rings are in the Olympic Games symbol?', '5.'],
+    ['B', 'Qual é o país famoso pela Torre Eiffel?', 'França.', 'Which country is famous for the Eiffel Tower?', 'France.'],
+    ['B', 'Quantos dias tem um ano bissexto?', '366.', 'How many days does a leap year have?', '366.'],
+    ['B', 'Diz 5 objetos que usamos na escola ou no trabalho.', 'Quaisquer 5 respostas válidas.', 'Name 5 objects we use at school or at work.', 'Any 5 valid answers.'],
+    ['B', 'Se ultrapassares a pessoa que está em segundo numa corrida, em que lugar ficas?', 'Segundo lugar.', 'If you overtake the person in second place in a race, what place are you in?', 'Second place.'],
+    ['B', 'Quantos meses têm pelo menos 28 dias?', '12.', 'How many months have at least 28 days?', '12.'],
+    ['B', 'Qual é o maior mamífero do mundo?', 'Baleia-azul.', 'What is the largest mammal in the world?', 'Blue whale.'],
+    ['B', 'Qual é o maior oceano do mundo?', 'Pacífico.', 'What is the largest ocean in the world?', 'Pacific.'],
+    ['B', 'Quantos graus tem um ângulo reto?', '90.', 'How many degrees is a right angle?', '90.'],
+    ['B', 'Quem pintou a Mona Lisa?', 'Leonardo da Vinci.', 'Who painted the Mona Lisa?', 'Leonardo da Vinci.'],
+    ['B', 'Qual é o elemento químico com o símbolo O?', 'Oxigénio.', 'Which chemical element has the symbol O?', 'Oxygen.']
+  ];
+  var count = {};
+  var ITEMS = RAW.map(function (r) {
+    count[r[0]] = (count[r[0]] || 0) + 1;
+    return { id: r[0] + (count[r[0]] < 10 ? '0' : '') + count[r[0]], c: r[0], pt: { q: r[1], a: r[2] }, en: { q: r[3], a: r[4] } };
+  });
+  var T = {
+    pt: { head: 'Perguntas', intro: 'Perguntas escolhidas para os coletes, com as respostas para consulta do monitor. Nas perguntas de lista, aceita qualquer resposta correta; os exemplos não são listas exclusivas.', cols: ['Pergunta', 'Resposta / exemplo', 'Certa'], safetyT: 'Nota de segurança', safety: 'A pessoa só deve responder quando estiver numa posição estável e segura. A altura do colete não deve obrigar ninguém a fazer movimentos fora das regras do parque.' },
+    en: { head: 'Questions', intro: 'Questions chosen for the vests, with answers for the monitor. For list questions, accept any correct answer; the examples are not exclusive lists.', cols: ['Question', 'Answer / example', 'Correct'], safetyT: 'Safety note', safety: 'The person should only answer when in a stable, safe position. The height of the vest must not force anyone to make movements outside the park rules.' }
+  };
+  // Perguntas escolhidas (ids do banco + próprias), agrupadas por cor e na ordem do banco.
+  function chosen(state, lang) {
+    var sel = state.qSel || [], cus = state.qCustom || [], l = lang === 'en' ? 'en' : 'pt', out = [];
+    COLORS.forEach(function (c) {
+      var rows = [];
+      ITEMS.forEach(function (it) { if (it.c === c.id && sel.indexOf(it.id) >= 0) rows.push([it[l].q, it[l].a]); });
+      cus.forEach(function (it) { if (it.c === c.id && sel.indexOf(it.id) >= 0) rows.push([it.q, it.a || '—']); });
+      if (rows.length) out.push({ color: c, rows: rows });
+    });
+    return out;
+  }
+  return { COLORS: COLORS, ITEMS: ITEMS, T: T, chosen: chosen };
+})();
+if (typeof module !== 'undefined') module.exports = TB_Q;
+
+</script>
+<script>
+/* Banco de perguntas da dinâmica DE3 (Cultura nas Alturas), por cor de colete. */
+var TB_PERG_COR = {
+  R: { pt: 'Vermelho', en: 'Red', dpt: 'fácil', den: 'easy', block: 'crimson', hex: '#E5484D' },
+  G: { pt: 'Verde', en: 'Green', dpt: 'fácil / médio', den: 'easy / medium', block: 'green', hex: '#1FA971' },
+  O: { pt: 'Laranja', en: 'Orange', dpt: 'médio', den: 'medium', block: 'orange', hex: '#F5A623' },
+  B: { pt: 'Azul', en: 'Blue', dpt: 'desafio', den: 'challenge', block: 'blue', hex: '#1F5FBF' }
+};
+var TB_PERG = [
+{
+"id": "R01",
+"cor": "R",
+"pt": {
+"q": "Quantos dias tem uma semana?",
+"a": "7."
+},
+"en": {
+"q": "How many days are in a week?",
+"a": "7."
+}
+},
+{
+"id": "R02",
+"cor": "R",
+"pt": {
+"q": "Quantos meses tem um ano?",
+"a": "12."
+},
+"en": {
+"q": "How many months are in a year?",
+"a": "12."
+}
+},
+{
+"id": "R03",
+"cor": "R",
+"pt": {
+"q": "Quantas patas tem uma aranha?",
+"a": "8."
+},
+"en": {
+"q": "How many legs does a spider have?",
+"a": "8."
+}
+},
+{
+"id": "R04",
+"cor": "R",
+"pt": {
+"q": "Qual é a capital de Portugal?",
+"a": "Lisboa."
+},
+"en": {
+"q": "What is the capital of Portugal?",
+"a": "Lisbon."
+}
+},
+{
+"id": "R05",
+"cor": "R",
+"pt": {
+"q": "Qual é o planeta em que vivemos?",
+"a": "Terra."
+},
+"en": {
+"q": "Which planet do we live on?",
+"a": "Earth."
+}
+},
+{
+"id": "R06",
+"cor": "R",
+"pt": {
+"q": "Que animal diz «miau»?",
+"a": "Gato."
+},
+"en": {
+"q": "Which animal says “meow”?",
+"a": "Cat."
+}
+},
+{
+"id": "R07",
+"cor": "R",
+"pt": {
+"q": "Quantas rodas tem uma bicicleta normal?",
+"a": "2."
+},
+"en": {
+"q": "How many wheels does a normal bicycle have?",
+"a": "2."
+}
+},
+{
+"id": "R08",
+"cor": "R",
+"pt": {
+"q": "Que cor resulta de misturar azul e amarelo?",
+"a": "Verde."
+},
+"en": {
+"q": "Which colour do you get by mixing blue and yellow?",
+"a": "Green."
+}
+},
+{
+"id": "R09",
+"cor": "R",
+"pt": {
+"q": "Quantos minutos tem uma hora?",
+"a": "60."
+},
+"en": {
+"q": "How many minutes are in an hour?",
+"a": "60."
+}
+},
+{
+"id": "R10",
+"cor": "R",
+"pt": {
+"q": "Qual é o contrário de quente?",
+"a": "Frio."
+},
+"en": {
+"q": "What is the opposite of hot?",
+"a": "Cold."
+}
+},
+{
+"id": "R11",
+"cor": "R",
+"pt": {
+"q": "Que estrela ilumina a Terra durante o dia?",
+"a": "O Sol."
+},
+"en": {
+"q": "Which star lights the Earth during the day?",
+"a": "The Sun."
+}
+},
+{
+"id": "R12",
+"cor": "R",
+"pt": {
+"q": "Em que estação do ano costuma nevar mais?",
+"a": "Inverno."
+},
+"en": {
+"q": "In which season does it usually snow the most?",
+"a": "Winter."
+}
+},
+{
+"id": "R13",
+"cor": "R",
+"pt": {
+"q": "Quantos dedos tem uma mão?",
+"a": "5."
+},
+"en": {
+"q": "How many fingers does a hand have?",
+"a": "5."
+}
+},
+{
+"id": "R14",
+"cor": "R",
+"pt": {
+"q": "De que cor é a neve?",
+"a": "Branca."
+},
+"en": {
+"q": "What colour is snow?",
+"a": "White."
+}
+},
+{
+"id": "R15",
+"cor": "R",
+"pt": {
+"q": "Qual é o contrário de grande?",
+"a": "Pequeno."
+},
+"en": {
+"q": "What is the opposite of big?",
+"a": "Small."
+}
+},
+{
+"id": "R16",
+"cor": "R",
+"pt": {
+"q": "Quantas horas tem um dia?",
+"a": "24."
+},
+"en": {
+"q": "How many hours are in a day?",
+"a": "24."
+}
+},
+{
+"id": "G01",
+"cor": "G",
+"pt": {
+"q": "Diz 3 países europeus.",
+"a": "Ex.: Portugal, Espanha, França."
+},
+"en": {
+"q": "Name 3 European countries.",
+"a": "E.g. Portugal, Spain, France."
+}
+},
+{
+"id": "G02",
+"cor": "G",
+"pt": {
+"q": "Diz 3 animais que vivem na água.",
+"a": "Ex.: golfinho, tubarão, polvo."
+},
+"en": {
+"q": "Name 3 animals that live in water.",
+"a": "E.g. dolphin, shark, octopus."
+}
+},
+{
+"id": "G03",
+"cor": "G",
+"pt": {
+"q": "Diz 3 desportos que se jogam com bola.",
+"a": "Ex.: futebol, basquetebol, voleibol."
+},
+"en": {
+"q": "Name 3 sports played with a ball.",
+"a": "E.g. football, basketball, volleyball."
+}
+},
+{
+"id": "G04",
+"cor": "G",
+"pt": {
+"q": "Quantos lados tem um triângulo?",
+"a": "3."
+},
+"en": {
+"q": "How many sides does a triangle have?",
+"a": "3."
+}
+},
+{
+"id": "G05",
+"cor": "G",
+"pt": {
+"q": "Quantos continentes se consideram normalmente?",
+"a": "7 (aceitar 6 conforme o modelo ensinado)."
+},
+"en": {
+"q": "How many continents are normally counted?",
+"a": "7 (accept 6 depending on the model taught)."
+}
+},
+{
+"id": "G06",
+"cor": "G",
+"pt": {
+"q": "Qual é o maior animal terrestre?",
+"a": "Elefante-africano."
+},
+"en": {
+"q": "What is the largest land animal?",
+"a": "African elephant."
+}
+},
+{
+"id": "G07",
+"cor": "G",
+"pt": {
+"q": "Qual é o oceano que banha a costa de Portugal?",
+"a": "Atlântico."
+},
+"en": {
+"q": "Which ocean washes the coast of Portugal?",
+"a": "Atlantic."
+}
+},
+{
+"id": "G08",
+"cor": "G",
+"pt": {
+"q": "Que órgão usamos principalmente para respirar?",
+"a": "Pulmões."
+},
+"en": {
+"q": "Which organ do we mainly use to breathe?",
+"a": "Lungs."
+}
+},
+{
+"id": "G09",
+"cor": "G",
+"pt": {
+"q": "Quantas cores tem tradicionalmente o arco-íris?",
+"a": "7."
+},
+"en": {
+"q": "How many colours does a rainbow traditionally have?",
+"a": "7."
+}
+},
+{
+"id": "G10",
+"cor": "G",
+"pt": {
+"q": "Qual é o primeiro mês do ano?",
+"a": "Janeiro."
+},
+"en": {
+"q": "What is the first month of the year?",
+"a": "January."
+}
+},
+{
+"id": "G11",
+"cor": "G",
+"pt": {
+"q": "Que língua se fala principalmente no Brasil?",
+"a": "Português."
+},
+"en": {
+"q": "Which language is mainly spoken in Brazil?",
+"a": "Portuguese."
+}
+},
+{
+"id": "G12",
+"cor": "G",
+"pt": {
+"q": "Qual é o satélite natural da Terra?",
+"a": "Lua."
+},
+"en": {
+"q": "What is the Earth’s natural satellite?",
+"a": "The Moon."
+}
+},
+{
+"id": "G13",
+"cor": "G",
+"pt": {
+"q": "Qual é a capital de França?",
+"a": "Paris."
+},
+"en": {
+"q": "What is the capital of France?",
+"a": "Paris."
+}
+},
+{
+"id": "G14",
+"cor": "G",
+"pt": {
+"q": "Diz 3 instrumentos musicais.",
+"a": "Ex.: piano, guitarra, violino."
+},
+"en": {
+"q": "Name 3 musical instruments.",
+"a": "E.g. piano, guitar, violin."
+}
+},
+{
+"id": "G15",
+"cor": "G",
+"pt": {
+"q": "Quantos dias tem fevereiro num ano normal?",
+"a": "28."
+},
+"en": {
+"q": "How many days does February have in a normal year?",
+"a": "28."
+}
+},
+{
+"id": "G16",
+"cor": "G",
+"pt": {
+"q": "Qual é o animal terrestre mais rápido?",
+"a": "Chita."
+},
+"en": {
+"q": "What is the fastest land animal?",
+"a": "Cheetah."
+}
+},
+{
+"id": "O01",
+"cor": "O",
+"pt": {
+"q": "Diz 5 capitais de países.",
+"a": "Ex.: Lisboa, Madrid, Paris, Roma, Londres."
+},
+"en": {
+"q": "Name 5 capital cities.",
+"a": "E.g. Lisbon, Madrid, Paris, Rome, London."
+}
+},
+{
+"id": "O02",
+"cor": "O",
+"pt": {
+"q": "Diz 4 frutas diferentes.",
+"a": "Quaisquer 4 frutas válidas."
+},
+"en": {
+"q": "Name 4 different fruits.",
+"a": "Any 4 valid fruits."
+}
+},
+{
+"id": "O03",
+"cor": "O",
+"pt": {
+"q": "Quantos jogadores de cada equipa estão em campo num jogo de futebol?",
+"a": "11."
+},
+"en": {
+"q": "How many players per team are on the pitch in a football match?",
+"a": "11."
+}
+},
+{
+"id": "O04",
+"cor": "O",
+"pt": {
+"q": "Qual é o maior planeta do Sistema Solar?",
+"a": "Júpiter."
+},
+"en": {
+"q": "What is the largest planet in the Solar System?",
+"a": "Jupiter."
+}
+},
+{
+"id": "O05",
+"cor": "O",
+"pt": {
+"q": "Em que direção nasce o Sol?",
+"a": "Este / nascente."
+},
+"en": {
+"q": "In which direction does the Sun rise?",
+"a": "East."
+}
+},
+{
+"id": "O06",
+"cor": "O",
+"pt": {
+"q": "Quantos lados tem um hexágono?",
+"a": "6."
+},
+"en": {
+"q": "How many sides does a hexagon have?",
+"a": "6."
+}
+},
+{
+"id": "O07",
+"cor": "O",
+"pt": {
+"q": "Que instrumento usamos para medir a temperatura?",
+"a": "Termómetro."
+},
+"en": {
+"q": "Which instrument do we use to measure temperature?",
+"a": "Thermometer."
+}
+},
+{
+"id": "O08",
+"cor": "O",
+"pt": {
+"q": "Qual é o metal normalmente atraído por um íman?",
+"a": "Ferro (também níquel e cobalto)."
+},
+"en": {
+"q": "Which metal is usually attracted by a magnet?",
+"a": "Iron (also nickel and cobalt)."
+}
+},
+{
+"id": "O09",
+"cor": "O",
+"pt": {
+"q": "Quantos segundos tem um minuto?",
+"a": "60."
+},
+"en": {
+"q": "How many seconds are in a minute?",
+"a": "60."
+}
+},
+{
+"id": "O10",
+"cor": "O",
+"pt": {
+"q": "Qual é a capital de Espanha?",
+"a": "Madrid."
+},
+"en": {
+"q": "What is the capital of Spain?",
+"a": "Madrid."
+}
+},
+{
+"id": "O11",
+"cor": "O",
+"pt": {
+"q": "Que animal é conhecido como «rei da selva»?",
+"a": "Leão (aceitar como expressão comum)."
+},
+"en": {
+"q": "Which animal is known as the “king of the jungle”?",
+"a": "Lion (accept as a common expression)."
+}
+},
+{
+"id": "O12",
+"cor": "O",
+"pt": {
+"q": "Quantos planetas do Sistema Solar são gigantes gasosos/gelados?",
+"a": "4: Júpiter, Saturno, Urano e Neptuno."
+},
+"en": {
+"q": "How many planets in the Solar System are gas/ice giants?",
+"a": "4: Jupiter, Saturn, Uranus and Neptune."
+}
+},
+{
+"id": "O13",
+"cor": "O",
+"pt": {
+"q": "Qual é a capital de Itália?",
+"a": "Roma."
+},
+"en": {
+"q": "What is the capital of Italy?",
+"a": "Rome."
+}
+},
+{
+"id": "O14",
+"cor": "O",
+"pt": {
+"q": "Quantos lados tem um octógono?",
+"a": "8."
+},
+"en": {
+"q": "How many sides does an octagon have?",
+"a": "8."
+}
+},
+{
+"id": "O15",
+"cor": "O",
+"pt": {
+"q": "Qual é o maior oceano do mundo?",
+"a": "Pacífico."
+},
+"en": {
+"q": "What is the largest ocean in the world?",
+"a": "Pacific."
+}
+},
+{
+"id": "O16",
+"cor": "O",
+"pt": {
+"q": "Qual é o gás que respiramos para viver?",
+"a": "Oxigénio."
+},
+"en": {
+"q": "Which gas do we breathe to live?",
+"a": "Oxygen."
+}
+},
+{
+"id": "B01",
+"cor": "B",
+"pt": {
+"q": "Diz 5 países que começam pela letra P.",
+"a": "Ex.: Portugal, Polónia, Panamá, Paraguai, Paquistão."
+},
+"en": {
+"q": "Name 5 countries that start with the letter P.",
+"a": "E.g. Portugal, Poland, Panama, Paraguay, Pakistan."
+}
+},
+{
+"id": "B02",
+"cor": "B",
+"pt": {
+"q": "Diz 5 coisas que podes encontrar numa cozinha.",
+"a": "Quaisquer 5 respostas válidas."
+},
+"en": {
+"q": "Name 5 things you can find in a kitchen.",
+"a": "Any 5 valid answers."
+}
+},
+{
+"id": "B03",
+"cor": "B",
+"pt": {
+"q": "Diz 5 modalidades olímpicas.",
+"a": "Ex.: atletismo, natação, judo, ginástica, ciclismo."
+},
+"en": {
+"q": "Name 5 Olympic sports.",
+"a": "E.g. athletics, swimming, judo, gymnastics, cycling."
+}
+},
+{
+"id": "B04",
+"cor": "B",
+"pt": {
+"q": "Quantos lados tem um dado normal?",
+"a": "6."
+},
+"en": {
+"q": "How many faces does a normal die have?",
+"a": "6."
+}
+},
+{
+"id": "B05",
+"cor": "B",
+"pt": {
+"q": "Qual é o nome do processo pelo qual as plantas produzem alimento usando luz?",
+"a": "Fotossíntese."
+},
+"en": {
+"q": "What is the name of the process by which plants make food using light?",
+"a": "Photosynthesis."
+}
+},
+{
+"id": "B06",
+"cor": "B",
+"pt": {
+"q": "Quantos anéis tem o símbolo dos Jogos Olímpicos?",
+"a": "5."
+},
+"en": {
+"q": "How many rings are in the Olympic Games symbol?",
+"a": "5."
+}
+},
+{
+"id": "B07",
+"cor": "B",
+"pt": {
+"q": "Qual é o país famoso pela Torre Eiffel?",
+"a": "França."
+},
+"en": {
+"q": "Which country is famous for the Eiffel Tower?",
+"a": "France."
+}
+},
+{
+"id": "B08",
+"cor": "B",
+"pt": {
+"q": "Quantos dias tem um ano bissexto?",
+"a": "366."
+},
+"en": {
+"q": "How many days are in a leap year?",
+"a": "366."
+}
+},
+{
+"id": "B09",
+"cor": "B",
+"pt": {
+"q": "Diz 5 objetos que usamos na escola ou no trabalho.",
+"a": "Quaisquer 5 respostas válidas."
+},
+"en": {
+"q": "Name 5 objects we use at school or at work.",
+"a": "Any 5 valid answers."
+}
+},
+{
+"id": "B10",
+"cor": "B",
+"pt": {
+"q": "Se ultrapassares a pessoa que está em segundo numa corrida, em que lugar ficas?",
+"a": "Segundo lugar."
+},
+"en": {
+"q": "If you overtake the person in second place in a race, what place are you in?",
+"a": "Second place."
+}
+},
+{
+"id": "B11",
+"cor": "B",
+"pt": {
+"q": "Quantos meses têm pelo menos 28 dias?",
+"a": "12."
+},
+"en": {
+"q": "How many months have at least 28 days?",
+"a": "12."
+}
+},
+{
+"id": "B12",
+"cor": "B",
+"pt": {
+"q": "Qual é o maior mamífero do mundo?",
+"a": "Baleia-azul."
+},
+"en": {
+"q": "What is the largest mammal in the world?",
+"a": "Blue whale."
+}
+},
+{
+"id": "B13",
+"cor": "B",
+"pt": {
+"q": "Qual é a capital da Alemanha?",
+"a": "Berlim."
+},
+"en": {
+"q": "What is the capital of Germany?",
+"a": "Berlin."
+}
+},
+{
+"id": "B14",
+"cor": "B",
+"pt": {
+"q": "Quantas horas tem uma semana?",
+"a": "168."
+},
+"en": {
+"q": "How many hours are in a week?",
+"a": "168."
+}
+},
+{
+"id": "B15",
+"cor": "B",
+"pt": {
+"q": "Diz 5 profissões diferentes.",
+"a": "Quaisquer 5 respostas válidas."
+},
+"en": {
+"q": "Name 5 different professions.",
+"a": "Any 5 valid answers."
+}
+},
+{
+"id": "B16",
+"cor": "B",
+"pt": {
+"q": "Qual é a fórmula química da água?",
+"a": "H2O."
+},
+"en": {
+"q": "What is the chemical formula of water?",
+"a": "H2O."
+}
+}
+];
+if (typeof module !== 'undefined') { module.exports = { TB_PERG: TB_PERG, TB_PERG_COR: TB_PERG_COR }; }
+
+</script>
+<script>
 // Núcleo: constrói os documentos como "blocos" (em PT ou EN) e converte-os para Word, HTML e texto.
 var TB = (function () {
   var W = 9638, WL = 14570; // largura útil A4 vertical / horizontal (DXA), margens de 2 cm
@@ -37133,6 +38040,18 @@ var TB = (function () {
     if (t.nota) B.push({ t: 'callout', c: c, color: 'blue', title: l.fNota, text: t.nota });
     if (t.staff && t.staff.length) B.push({ t: 'callout', c: c, color: 'orange', title: l.fStaff, items: t.staff });
     if (fig) { B.push({ t: 'fiche', text: d.id + ' · ' + t.nome + ' · ' + l.figHead, first: false }); B.push({ t: 'figure', src: fig.src, w: fig.w, h: fig.h, cap: fig.cap[lg(state)] }); }
+    if (d.id === 'DE3' && typeof TB_Q !== 'undefined') {
+      var qs = TB_Q.chosen(state, lg(state)), qt = TB_Q.T[lg(state)], en = lg(state) === 'en';
+      if (qs.length) {
+        B.push({ t: 'fiche', text: d.id + ' · ' + t.nome + ' · ' + qt.head, first: false });
+        B.push({ t: 'small', c: c, text: qt.intro });
+        qs.forEach(function (g) {
+          B.push({ t: 'h2', color: g.color.col, text: (en ? g.color.en : g.color.pt) + ' · ' + (en ? g.color.lvEn : g.color.lvPt) });
+          B.push({ t: 'table', head: qt.cols, widths: [4500, 3900, 1238], color: g.color.col, plain: true, rows: g.rows.map(function (r) { return [r[0], r[1], '☐']; }) });
+        });
+        B.push({ t: 'callout', c: c, color: 'orange', title: qt.safetyT, text: qt.safety });
+      }
+    }
     return B;
   }
   function buildEval(state) {
@@ -37641,7 +38560,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
   var KEY = 'tb-planeador-v2';
   var GRPS = ['DT', 'DE', 'DL'];
   var defaults = function () {
-    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17, labDir: 'up', durTotal: 0 };
+    return { cliente: '', data: '', pax: '', park: 'Lisboa', lang: 'pt', briefing: 5, notas: '', sel: ['DT1', 'DT3', 'DT4', 'DT5', 'DL1', 'DL3', 'DLT'], docs: { resumo: true, fichas: true, aval: true }, exemplo: true, lab: [], labN: 17, labDir: 'up', durTotal: 0, qSel: [], qCustom: [], qPer: 2 };
   };
   var state = defaults();
   try { var raw = localStorage.getItem(KEY); if (raw) { var s = JSON.parse(raw); if (s && Array.isArray(s.sel)) { state = Object.assign(defaults(), s); state.docs = Object.assign(defaults().docs, s.docs || {}); } } } catch (e) {}
@@ -37748,6 +38667,48 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     $('b-clear').disabled = !k;
   }
   function monitorOpt() { return { resumo: !!state.docs.resumo, fichas: !!state.docs.fichas, aval: !!state.docs.aval }; }
+  // ---------- Perguntas do Cultura nas Alturas (DE3) ----------
+  var qOpen = { R: true };
+  function qList(cid) {
+    return TB_Q.ITEMS.filter(function (i) { return i.c === cid; }).map(function (i) { return { id: i.id, q: i.pt.q, a: i.pt.a, custom: false }; })
+      .concat(state.qCustom.filter(function (i) { return i.c === cid; }).map(function (i) { return { id: i.id, q: i.q, a: i.a, custom: true }; }));
+  }
+  function qCounts() {
+    var tot = 0;
+    TB_Q.COLORS.forEach(function (col) {
+      var list = qList(col.id), n = list.filter(function (i) { return state.qSel.indexOf(i.id) >= 0; }).length; tot += n;
+      var el = document.querySelector('[data-qn="' + col.id + '"]'); if (el) el.textContent = n + ' / ' + list.length;
+    });
+    $('q-count').textContent = tot ? tot + (tot === 1 ? ' pergunta escolhida.' : ' perguntas escolhidas.') : 'Nenhuma pergunta escolhida: a ficha não terá página de perguntas.';
+  }
+  function renderQ() {
+    var on = state.sel.indexOf('DE3') >= 0; $('q-panel').hidden = !on; if (!on) return;
+    var h = '';
+    TB_Q.COLORS.forEach(function (col) {
+      var dot = { crimson: '#E5383B', green: '#12A37A', orange: '#F5A623', blue: '#1A4B9C' }[col.col];
+      h += '<details class="q-grp" data-qc="' + col.id + '"' + (qOpen[col.id] ? ' open' : '') + '><summary><span class="q-dot" style="background:' + dot + '"></span>' + esc(col.pt) + ' · ' + esc(col.lvPt) + '<span class="q-n" data-qn="' + col.id + '"></span></summary>';
+      qList(col.id).forEach(function (i) {
+        h += '<label class="q-it"><input type="checkbox" data-q="' + i.id + '"' + (state.qSel.indexOf(i.id) >= 0 ? ' checked' : '') + '><span><b>' + esc(i.q) + '</b><em>' + esc(i.a) + '</em></span>' + (i.custom ? '<button type="button" data-qdel="' + i.id + '" aria-label="Apagar pergunta">✕</button>' : '') + '</label>';
+      });
+      h += '</details>';
+    });
+    $('q-body').innerHTML = h; $('q-per').value = state.qPer; qCounts();
+  }
+  function qRandom() {
+    var per = Math.max(1, Math.min(16, parseInt($('q-per').value, 10) || 2)); state.qPer = per; state.qSel = [];
+    TB_Q.COLORS.forEach(function (col) {
+      var list = qList(col.id).map(function (i) { return i.id; });
+      for (var k = list.length - 1; k > 0; k--) { var j = Math.floor(Math.random() * (k + 1)), tmp = list[k]; list[k] = list[j]; list[j] = tmp; }
+      state.qSel = state.qSel.concat(list.slice(0, per));
+    });
+    save(); renderQ(); renderPreview();
+  }
+  function qAdd() {
+    var q = $('q-q').value.trim(); if (!q) { $('q-q').focus(); return; }
+    var id = 'C' + Date.now().toString(36), cid = $('q-c').value;
+    state.qCustom.push({ id: id, c: cid, q: q, a: $('q-a').value.trim() }); state.qSel.push(id); qOpen[cid] = true;
+    $('q-q').value = ''; $('q-a').value = ''; save(); renderQ(); renderPreview();
+  }
   // ---------- Mapa do Labirinto (DT2) ----------
   var labSig = '', labImg = null;
   function labOverride() {
@@ -37809,7 +38770,7 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     var ok = canExport() && !busy;
     $('b-docx').disabled = !ok || !canSave(); $('b-pdf').disabled = !ok || !canSave(); $('b-print').disabled = !canExport();
   }
-  function refresh() { renderSummary(); renderSel(); renderLab(); syncCards(); renderPreview(); }
+  function refresh() { renderSummary(); renderSel(); renderLab(); renderQ(); syncCards(); renderPreview(); }
 
   /* ---------- Ficheiros ---------- */
   function fileBase() {
@@ -37914,12 +38875,18 @@ if (typeof module !== 'undefined') module.exports = TB_PDF;
     if (t.id === 'b-pdf') return exportAs('pdf');
     if (t.id === 'b-copy') return copy();
     if (t.id === 'b-print') return printDoc();
+    if (t.id === 'q-rand') return qRandom();
+    if (t.id === 'q-clear') { state.qSel = []; save(); renderQ(); return renderPreview(); }
+    if (t.id === 'q-add') return qAdd();
+    if (t.dataset.qdel) { e.preventDefault(); var did = t.dataset.qdel; state.qCustom = state.qCustom.filter(function (x) { return x.id !== did; }); state.qSel = state.qSel.filter(function (x) { return x !== did; }); save(); renderQ(); return renderPreview(); }
     if (t.dataset.lab !== undefined) return labClick(+t.dataset.lab);
     if (t.id === 'lab-rand') { var nn = Math.max(7, Math.min(21, parseInt($('lab-n').value, 10) || 17)); state.labN = nn; var rr = TB_LAB.random(nn, state.labDir); if (rr) state.lab = rr; save(); renderLab(); return renderPreview(); }
     if (t.id === 'lab-undo') { state.lab.pop(); save(); renderLab(); return renderPreview(); }
     if (t.id === 'lab-clear') { state.lab = []; save(); renderLab(); return renderPreview(); }
   });
+  document.addEventListener('toggle', function (e) { var g = e.target && e.target.dataset && e.target.dataset.qc; if (g) qOpen[g] = e.target.open; }, true);
   document.addEventListener('change', function (e) {
+    if (e.target && e.target.dataset && e.target.dataset.q) { var qid = e.target.dataset.q, qi = state.qSel.indexOf(qid); if (e.target.checked && qi < 0) state.qSel.push(qid); else if (!e.target.checked && qi >= 0) state.qSel.splice(qi, 1); save(); qCounts(); renderPreview(); return; }
     if (e.target && e.target.id === 'lab-dir') { var nd = e.target.value === 'down' ? 'down' : 'up'; if (nd !== state.labDir) { state.lab = TB_LAB.valid(state.lab, state.labDir) ? state.lab.slice().reverse() : []; state.labDir = nd; save(); renderLab(); renderPreview(); } return; }
     var o = e.target.dataset && e.target.dataset.opt; if (!o) return;
     state.docs[o] = e.target.checked; save(); renderPreview();
