@@ -1,0 +1,8 @@
+# Site estático: o index.html está na raiz, não há build.
+[build]
+  publish = "."
+
+# Edge Function que exige o header X-App-Token em todos os pedidos.
+[[edge_functions]]
+  path = "/*"
+  function = "token-guard"
